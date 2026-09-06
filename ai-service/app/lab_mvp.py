@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Literal, Mapping
 
@@ -19,6 +21,20 @@ _POLICY_TOOL = "lab.policy.read"
 _DRAFT_TOOL = "lab.booking.draft"
 _SHIFT_CREATE_DRAFT_TOOL = "lab.shift.create.draft"
 _DRAFT_TOOLS = {_DRAFT_TOOL, _SHIFT_CREATE_DRAFT_TOOL}
+_USER_REQUEST_MARKER = "User request:"
+_EXPLICIT_DATE_PATTERN = re.compile(
+    r"\b(?:hom\s+nay|ngay\s+mai|ngay\s+kia|today|tomorrow|"
+    r"thu\s+(?:hai|ba|tu|nam|sau|bay|chu\s+nhat)|"
+    r"(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b"
+    r"|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b"
+    r"|\b\d{4}-\d{2}-\d{2}\b"
+    r"|\bngay\s+\d{1,2}\s+thang\s+\d{1,2}(?:\s+nam\s+\d{4})?\b"
+)
+_TIME_PATTERN = re.compile(
+    r"\b(?:[01]?\d|2[0-3])(?::[0-5]\d|\s+gio(?:\s+[0-5]?\d)?)\b"
+    r"|\b(?:[01]?\d|2[0-3])h(?:[0-5]\d)?\b"
+)
+_END_TIME_CUE_PATTERN = re.compile(r"\b(?:den|ket\s+thuc(?:\s+luc)?)\s+(?:[01]?\d|2[0-3])")
 _TOOL_SHAPES = {
     _POLICY_TOOL: ("LABORATORY", "READ_ONLY"),
     "lab.slot.read": ("TIME_SLOT", "READ_ONLY"),
@@ -140,6 +156,14 @@ class LabAssistantMvp:
         if selected is None:
             return self._safe_refusal()
         tool_id, context, resources = selected
+        if tool_id == _SHIFT_CREATE_DRAFT_TOOL:
+            missing_fields = self._missing_shift_fields(payload.input)
+            if missing_fields:
+                return self._shift_clarification(
+                    context.context.laboratory.id,
+                    missing_fields,
+                    resources,
+                )
         json_output = tool_id in _DRAFT_TOOLS
         generation = self._backend.generate(
             AssistantKey.LAB_ASSISTANT,
@@ -178,6 +202,83 @@ class LabAssistantMvp:
             resources,
         )
         return candidate if validation.validation_status == "VALID" else self._safe_refusal(generation)
+
+    def _shift_clarification(
+        self,
+        lab_id: int,
+        missing_fields: tuple[str, ...],
+        resources: list[dict[str, JsonValue]],
+    ) -> ChatResponse:
+        question_by_fields = {
+            ("DATE",): "Bạn muốn tạo ca vào ngày nào?",
+            ("START_TIME",): "Bạn muốn ca bắt đầu lúc mấy giờ?",
+            ("END_TIME",): "Bạn muốn ca kết thúc lúc mấy giờ?",
+        }
+        question = question_by_fields.get(
+            missing_fields,
+            "Bạn vui lòng cung cấp " + self._missing_field_labels(missing_fields) + ".",
+        )
+        payload = {
+            "kind": "LAB_SHIFT_CREATE_CLARIFICATION",
+            "labRef": lab_id,
+            "missingFields": list(missing_fields),
+            "question": question,
+            "requiresHumanReview": True,
+        }
+        answer = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        structured_validation = self._output_validator.validate(
+            self._profile,
+            "STRUCTURED_DRAFT",
+            answer,
+            resources,
+        )
+        if structured_validation.validation_status != "VALID":
+            return self._safe_refusal()
+        candidate = ChatResponse(
+            assistant_key=AssistantKey.LAB_ASSISTANT,
+            answer=answer,
+            prompt_tokens=0,
+            completion_tokens=0,
+            metadata={"resourceReferences": resources, "draftOnly": True},
+        )
+        response_validation = self._output_validator.validate(
+            self._profile,
+            "CHAT_RESPONSE",
+            candidate.model_dump(by_alias=True, mode="json"),
+            resources,
+        )
+        return candidate if response_validation.validation_status == "VALID" else self._safe_refusal()
+
+    @staticmethod
+    def _missing_shift_fields(user_input: str) -> tuple[str, ...]:
+        if _USER_REQUEST_MARKER not in user_input:
+            return ()
+        request = user_input.rsplit(_USER_REQUEST_MARKER, 1)[-1]
+        normalized = LabAssistantMvp._normalized(request)
+        missing: list[str] = []
+        if not _EXPLICIT_DATE_PATTERN.search(normalized):
+            missing.append("DATE")
+
+        times = _TIME_PATTERN.findall(normalized)
+        if not times:
+            missing.extend(("START_TIME", "END_TIME"))
+        elif len(times) == 1:
+            missing.append("START_TIME" if _END_TIME_CUE_PATTERN.search(normalized) else "END_TIME")
+        return tuple(missing)
+
+    @staticmethod
+    def _missing_field_labels(missing_fields: tuple[str, ...]) -> str:
+        labels = {
+            "DATE": "ngày",
+            "START_TIME": "giờ bắt đầu",
+            "END_TIME": "giờ kết thúc",
+        }
+        return ", ".join(labels[field] for field in missing_fields)
+
+    @staticmethod
+    def _normalized(value: str) -> str:
+        decomposed = unicodedata.normalize("NFD", value.casefold()).replace("đ", "d")
+        return "".join(character for character in decomposed if not unicodedata.combining(character))
 
     def _authorized_selection(
         self,

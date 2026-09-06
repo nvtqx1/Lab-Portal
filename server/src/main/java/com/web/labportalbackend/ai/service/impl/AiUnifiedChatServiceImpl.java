@@ -22,6 +22,7 @@ import com.web.labportalbackend.ai.service.AiToolCandidate;
 import com.web.labportalbackend.ai.service.AiToolCandidateCatalog;
 import com.web.labportalbackend.ai.service.AiToolDefinition;
 import com.web.labportalbackend.ai.service.AiToolRegistry;
+import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidationException;
 import com.web.labportalbackend.ai.service.AiUnifiedChatService;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,8 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
 
     private static final String NO_AUTHORIZED_CAPABILITY =
             "I cannot find an available Lab Portal capability for this request.";
+    private static final String INVALID_LAB_SHIFT_DRAFT =
+            "Tôi chưa thể tạo bản xem trước an toàn. Vui lòng cung cấp ngày, giờ bắt đầu và giờ kết thúc rồi thử lại.";
 
     private final AiToolCandidateCatalog candidateCatalog;
     private final AiToolPlanningClient planningClient;
@@ -102,8 +105,23 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
                         Math.addExact(planning.completionTokens(), answer.completionTokens()),
                         answer.citations());
             }
-            AiActionPreviewResponse preview = actionSuggestionService.createLabShiftPreview(
-                    selected.resource().resourceId(), answer);
+            if (!hasLabShiftKind(answer.answer(), "LAB_SHIFT_CREATE_DRAFT")) {
+                return new AiUnifiedChatResponse(AiUnifiedChatResponseType.REFUSED,
+                        answer.assistantKey(), INVALID_LAB_SHIFT_DRAFT,
+                        Math.addExact(planning.promptTokens(), answer.promptTokens()),
+                        Math.addExact(planning.completionTokens(), answer.completionTokens()),
+                        answer.citations());
+            }
+            AiActionPreviewResponse preview;
+            try {
+                preview = actionSuggestionService.createLabShiftPreview(selected.resource().resourceId(), answer);
+            } catch (AiSuggestionPayloadValidationException ignored) {
+                return new AiUnifiedChatResponse(AiUnifiedChatResponseType.REFUSED,
+                        answer.assistantKey(), INVALID_LAB_SHIFT_DRAFT,
+                        Math.addExact(planning.promptTokens(), answer.promptTokens()),
+                        Math.addExact(planning.completionTokens(), answer.completionTokens()),
+                        answer.citations());
+            }
             return new AiUnifiedChatResponse(AiUnifiedChatResponseType.ACTION_PREVIEW, answer.assistantKey(),
                     "Please review and confirm the proposed Lab time slot.",
                     Math.addExact(planning.promptTokens(), answer.promptTokens()),
@@ -159,17 +177,26 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
     }
 
     private String labShiftClarification(String answer) {
+        if (!hasLabShiftKind(answer, "LAB_SHIFT_CREATE_CLARIFICATION")) {
+            return null;
+        }
         try {
             JsonNode parsed = objectMapper.readTree(answer);
-            if (parsed == null || !parsed.isObject()
-                    || !"LAB_SHIFT_CREATE_CLARIFICATION".equals(parsed.path("kind").asText())) {
-                return null;
-            }
             JsonNode question = parsed.get("question");
             return question != null && question.isTextual() && !question.textValue().isBlank()
                     ? question.textValue() : null;
         } catch (JsonProcessingException ignored) {
             return null;
+        }
+    }
+
+    private boolean hasLabShiftKind(String answer, String expectedKind) {
+        try {
+            JsonNode parsed = objectMapper.readTree(answer);
+            return parsed != null && parsed.isObject()
+                    && expectedKind.equals(parsed.path("kind").asText());
+        } catch (JsonProcessingException ignored) {
+            return false;
         }
     }
 }
