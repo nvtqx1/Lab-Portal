@@ -49,11 +49,12 @@ class AiLabAssistantContextBuilderTest {
     }
     @Test void currentAcceptedActorIsBoundToLabProjection() {
         LaboratoryRepository labs = mock(LaboratoryRepository.class);
-        when(labs.findAiContextLaboratory(7L, 10L, "STUDENT")).thenReturn(Optional.of(new AiLabContext.Laboratory(10L, "Lab", null)));
+        when(labs.findAiContextLaboratory(7L, 10L, "STUDENT")).thenReturn(Optional.of(new AiLabContext.Laboratory(10L, "Lab", null, 24)));
         SystemConfigService configs = policyConfig();
         AiLabAssistantContextBuilder builder = new AiLabAssistantContextBuilder(labs, mock(TimeSlotRepository.class), mock(BookingRepository.class), configs);
         AiLabContext context = (AiLabContext) builder.build(input());
         assertEquals(10L, context.laboratory().id());
+        assertEquals(24, context.laboratory().capacity());
         assertEquals("POLICY_INFORMATION_ONLY", context.policyOrDraftEligibilityLabel());
         assertEquals(10, context.labPolicySnapshot().checkinWindowMinutes());
         assertEquals(30, context.labPolicySnapshot().cancelBeforeMinutes());

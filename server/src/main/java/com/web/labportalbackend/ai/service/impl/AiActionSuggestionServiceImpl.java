@@ -27,8 +27,10 @@ import com.web.labportalbackend.booking.service.TimeSlotService;
 import com.web.labportalbackend.common.enums.TimeSlotStatus;
 import com.web.labportalbackend.common.exception.ResourceNotFoundException;
 import java.time.DateTimeException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,17 +47,29 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
     private final AiSuggestionPayloadValidator payloadValidator;
     private final TimeSlotService timeSlotService;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
+    @Autowired
     public AiActionSuggestionServiceImpl(AiActionSuggestionRepository repository,
                                          AiCurrentActorProvider currentActorProvider,
                                          AiSuggestionPayloadValidator payloadValidator,
                                          TimeSlotService timeSlotService,
                                          ObjectMapper objectMapper) {
+        this(repository, currentActorProvider, payloadValidator, timeSlotService, objectMapper, Clock.systemUTC());
+    }
+
+    AiActionSuggestionServiceImpl(AiActionSuggestionRepository repository,
+                                  AiCurrentActorProvider currentActorProvider,
+                                  AiSuggestionPayloadValidator payloadValidator,
+                                  TimeSlotService timeSlotService,
+                                  ObjectMapper objectMapper,
+                                  Clock clock) {
         this.repository = repository;
         this.currentActorProvider = currentActorProvider;
         this.payloadValidator = payloadValidator;
         this.timeSlotService = timeSlotService;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Override
@@ -77,7 +91,7 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
                 parseInstant(payload.get("startTime").textValue()),
                 parseInstant(payload.get("endTime").textValue()),
                 payload.get("capacity").intValue());
-        if (!stored.startTime().isBefore(stored.endTime())) {
+        if (!stored.startTime().isAfter(clock.instant()) || !stored.startTime().isBefore(stored.endTime())) {
             throw invalidSuggestion();
         }
 
@@ -103,6 +117,9 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
         AiCurrentActor actor = requireManager();
         AiActionSuggestionEntity suggestion = pendingOwnedSuggestion(suggestionId, actor);
         StoredLabShift payload = readStored(suggestion);
+        if (!payload.startTime().isAfter(clock.instant())) {
+            throw new IllegalStateException("AI action preview start time is no longer in the future");
+        }
 
         suggestion.setConfirmationStatus(AiActionConfirmationStatus.CONFIRMED);
         suggestion.setExecutionStatus(AiActionExecutionStatus.PENDING);

@@ -1,5 +1,7 @@
 package com.web.labportalbackend.ai.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -74,7 +76,7 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
         }
 
         AiToolCandidate selected = candidates.stream()
-                .filter(candidate -> candidate.toCanonicalToolRequest(objectMapper).equals(planning.toolRequest()))
+                .filter(candidate -> matchesCanonicalToolRequest(candidate, planning.toolRequest()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("AI planner returned a non-canonical tool request"));
         AiToolDefinition definition = toolRegistry.get(selected.toolId());
@@ -92,6 +94,14 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
         AiAssistantChatResponse answer = assistantGatewayService.chat(
                 selected.assistantKey(), delegated, normalizedRequestId);
         if (definition.capability() == AiCapability.LAB_SHIFT_CREATE_DRAFT) {
+            String clarification = labShiftClarification(answer.answer());
+            if (clarification != null) {
+                return new AiUnifiedChatResponse(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED,
+                        answer.assistantKey(), clarification,
+                        Math.addExact(planning.promptTokens(), answer.promptTokens()),
+                        Math.addExact(planning.completionTokens(), answer.completionTokens()),
+                        answer.citations());
+            }
             AiActionPreviewResponse preview = actionSuggestionService.createLabShiftPreview(
                     selected.resource().resourceId(), answer);
             return new AiUnifiedChatResponse(AiUnifiedChatResponseType.ACTION_PREVIEW, answer.assistantKey(),
@@ -110,5 +120,56 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
                                                   int promptTokens,
                                                   int completionTokens) {
         return new AiUnifiedChatResponse(type, null, message, promptTokens, completionTokens, List.of());
+    }
+
+    private static boolean matchesCanonicalToolRequest(AiToolCandidate candidate, JsonNode request) {
+        if (request == null || !request.isObject() || request.size() != 4
+                || !matchesText(request, "assistantKey", candidate.assistantKey().name())
+                || !matchesText(request, "schemaVersion", candidate.schemaVersion())
+                || !matchesText(request, "toolId", candidate.toolId().value())) {
+            return false;
+        }
+        JsonNode arguments = request.get("arguments");
+        if (arguments == null || !arguments.isObject()
+                || arguments.size() != (candidate.parentResource() == null ? 1 : 2)
+                || !matchesResource(arguments.get("resource"), candidate.resource())) {
+            return false;
+        }
+        return candidate.parentResource() == null
+                ? !arguments.has("parentResource")
+                : matchesResource(arguments.get("parentResource"), candidate.parentResource());
+    }
+
+    private static boolean matchesResource(JsonNode actual, AiToolCandidate.ResourceReference expected) {
+        if (actual == null || !actual.isObject() || actual.size() != 2
+                || !matchesText(actual, "resourceType", expected.resourceType().name())) {
+            return false;
+        }
+        JsonNode resourceId = actual.get("resourceId");
+        if (expected.resourceId() == null) {
+            return resourceId != null && resourceId.isNull();
+        }
+        return resourceId != null && resourceId.isIntegralNumber()
+                && resourceId.canConvertToLong() && resourceId.longValue() == expected.resourceId();
+    }
+
+    private static boolean matchesText(JsonNode object, String name, String expected) {
+        JsonNode actual = object.get(name);
+        return actual != null && actual.isTextual() && expected.equals(actual.textValue());
+    }
+
+    private String labShiftClarification(String answer) {
+        try {
+            JsonNode parsed = objectMapper.readTree(answer);
+            if (parsed == null || !parsed.isObject()
+                    || !"LAB_SHIFT_CREATE_CLARIFICATION".equals(parsed.path("kind").asText())) {
+                return null;
+            }
+            JsonNode question = parsed.get("question");
+            return question != null && question.isTextual() && !question.textValue().isBlank()
+                    ? question.textValue() : null;
+        } catch (JsonProcessingException ignored) {
+            return null;
+        }
     }
 }

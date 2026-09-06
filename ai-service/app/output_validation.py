@@ -622,6 +622,9 @@ class StructuredOutputValidator:
             "LAB_SHIFT_CREATE_DRAFT": [
                 {"resourceType": "LABORATORY", "resourceId": candidate.get("labRef")},
             ],
+            "LAB_SHIFT_CREATE_CLARIFICATION": [
+                {"resourceType": "LABORATORY", "resourceId": candidate.get("labRef")},
+            ],
             "RESEARCH_TASK_PROPOSAL_DRAFT": [
                 {"resourceType": "PROJECT", "resourceId": candidate.get("projectRef")},
                 {"resourceType": "GROUP", "resourceId": candidate.get("groupRef")},

@@ -1,10 +1,12 @@
 package com.web.labportalbackend.ai.context;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.web.labportalbackend.common.enums.BookingStatus;
 import com.web.labportalbackend.common.enums.LabStatus;
 import com.web.labportalbackend.common.enums.TimeSlotStatus;
 import java.time.Instant;
 
+@JsonInclude(JsonInclude.Include.ALWAYS)
 public record AiLabContext(
         Laboratory laboratory,
         Slot slot,
@@ -15,12 +17,19 @@ public record AiLabContext(
         boolean draftOnly,
         String policyOrDraftEligibilityLabel) implements AiDomainContext {
 
-    public record Laboratory(Long id, String name, LabStatus status) {
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Laboratory(Long id, String name, LabStatus status, Integer capacity) {
+
+        public Laboratory(Long id, String name, LabStatus status) {
+            this(id, name, status, null);
+        }
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Slot(Long id, Instant startTime, Instant endTime, TimeSlotStatus status) {
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public record OwnBooking(Long id, BookingStatus status, Slot slot) {
     }
 

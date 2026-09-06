@@ -65,7 +65,7 @@ def _request(tool_id: str, resource_type: str, resource_id: int):
     lab_id = 10
     if tool_id == "lab.available.slots.read":
         context = {
-            "laboratory": {"id": lab_id, "name": "Authorized Lab", "status": "ACTIVE"},
+            "laboratory": {"id": lab_id, "name": "Authorized Lab", "status": "ACTIVE", "capacity": 24},
             "availableSlots": {
                 "values": [
                     {
@@ -83,7 +83,7 @@ def _request(tool_id: str, resource_type: str, resource_id: int):
         }
     else:
         context = {
-            "laboratory": {"id": lab_id, "name": "Authorized Lab", "status": "ACTIVE"},
+            "laboratory": {"id": lab_id, "name": "Authorized Lab", "status": "ACTIVE", "capacity": 24},
             "slot": None,
             "booking": None,
             "managedSummary": None,
@@ -282,6 +282,33 @@ def test_lab_shift_create_returns_validated_non_executable_draft() -> None:
         "resourceReferences": [{"resourceType": "LABORATORY", "resourceId": 10}],
         "draftOnly": True,
     }
+
+
+def test_lab_shift_create_can_request_missing_required_times_without_refusing() -> None:
+    clarification = {
+        "kind": "LAB_SHIFT_CREATE_CLARIFICATION",
+        "labRef": 10,
+        "missingFields": ["START_TIME", "END_TIME"],
+        "question": "Bạn muốn ca bắt đầu và kết thúc lúc mấy giờ?",
+        "requiresHumanReview": True,
+    }
+    backend = StubGenerationBackend(json.dumps(clarification, ensure_ascii=False))
+
+    response = _client(backend).post(
+        "/v1/assistants/chat",
+        json=_request("lab.shift.create.draft", "LABORATORY", 10),
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.json()["answer"]) == clarification
+    assert response.json()["metadata"] == {
+        "resourceReferences": [{"resourceType": "LABORATORY", "resourceId": 10}],
+        "draftOnly": True,
+    }
+    assert "Asia/Ho_Chi_Minh" in backend.messages[0]["content"]
+    assert "laboratory.capacity" in backend.messages[0]["content"]
+    prompted = json.loads(backend.messages[1]["content"])
+    assert prompted["authorizedContext"]["context"]["laboratory"]["capacity"] == 24
 
 
 def test_policy_read_returns_guidance_from_authorized_policy_snapshot() -> None:

@@ -93,7 +93,7 @@ public class AiAssistantGatewayServiceImpl implements AiAssistantGatewayService 
 
             ObjectNode payload = objectMapper.createObjectNode();
             payload.put("assistantKey", profile.key().name());
-            payload.put("input", request.getInput());
+            payload.put("input", inferenceInput(request, authorized));
             payload.set("authorizedContext",
                     objectMapper.valueToTree(AiPythonAuthorizedContext.from(authorized, retrieval)));
             response = gatewayClient.chat(new AiGatewayRequest(payload, normalizedRequestId));
@@ -116,6 +116,17 @@ public class AiAssistantGatewayServiceImpl implements AiAssistantGatewayService 
                 .map(chunk -> new AiRagCitationResponse(chunk.documentId(), chunk.resourceId(), chunk.version(),
                         chunk.chunkIndex(), chunk.pageNumber(), chunk.sourceType()))
                 .toList();
+    }
+
+    private static String inferenceInput(AiAssistantChatRequest request, AiAuthorizedContext authorized) {
+        if (request.getCapability() != AiCapability.LAB_SHIFT_CREATE_DRAFT) {
+            return request.getInput();
+        }
+        return "Trusted Spring temporal context: requestTimeUtc=" + authorized.builtAt()
+                + ", defaultTimezone=Asia/Ho_Chi_Minh. Resolve relative dates such as today or tomorrow from "
+                + "this instant after converting it to the timezone explicitly supplied in the user request, "
+                + "or to defaultTimezone when the request does not specify one. Never use a training example or "
+                + "training cutoff as the current date. User request: " + request.getInput();
     }
 
     private static AiAssistantAuditEvent succeededEvent(String requestId,

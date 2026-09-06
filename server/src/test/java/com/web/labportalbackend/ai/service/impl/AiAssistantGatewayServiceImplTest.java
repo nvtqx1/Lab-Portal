@@ -101,6 +101,27 @@ class AiAssistantGatewayServiceImplTest {
     }
 
     @Test
+    void labDraftContextPreservesContractualNullFieldsWithProductionJacksonInclusion() {
+        ObjectMapper productionMapper = new ObjectMapper()
+                .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        AiLabContext context = new AiLabContext(
+                new AiLabContext.Laboratory(10L, "Authorized Lab", null),
+                null, null, null, null, null, true, "DRAFT_ONLY_NO_SHIFT_WRITE");
+
+        JsonNode serialized = productionMapper.valueToTree(context);
+
+        assertEquals(Set.of("laboratory", "slot", "booking", "managedSummary", "labPolicySnapshot",
+                "checkinPolicySnapshot", "draftOnly", "policyOrDraftEligibilityLabel"), fieldSet(serialized));
+        assertTrue(serialized.path("laboratory").has("status"));
+        assertTrue(serialized.path("laboratory").path("status").isNull());
+        assertTrue(serialized.path("slot").isNull());
+        assertTrue(serialized.path("booking").isNull());
+        assertTrue(serialized.path("managedSummary").isNull());
+        assertTrue(serialized.path("labPolicySnapshot").isNull());
+        assertTrue(serialized.path("checkinPolicySnapshot").isNull());
+    }
+
+    @Test
     void adminSystemSummaryProjectsOnlyBoundedAuthorizedContextToPython() {
         AiAssistantProfile profile = profile(AiAssistantKey.ADMIN_ASSISTANT);
         AiAssistantAvailability availability = new AiAssistantAvailability(
@@ -207,6 +228,33 @@ class AiAssistantGatewayServiceImplTest {
         assertEquals(12, auditEvent.getValue().promptTokens());
         assertEquals(7, auditEvent.getValue().completionTokens());
         assertTrue(auditEvent.getValue().consumesUsage());
+    }
+
+    @Test
+    void labShiftDraftReceivesTrustedRequestTimeWithoutChangingThePythonContract() {
+        AiAssistantProfile profile = profile(AiAssistantKey.LAB_ASSISTANT);
+        AiAssistantAvailability availability = new AiAssistantAvailability(
+                profile, 7L, AiAssistantSystemRole.LAB_MANAGER);
+        AiAssistantChatRequest publicRequest = request(AiCapability.LAB_SHIFT_CREATE_DRAFT, 10L, null);
+        publicRequest.setInput("Create a slot tomorrow from 15:00 to 17:00 in Asia/Ho_Chi_Minh.");
+        AiCapabilityRequest capabilityRequest = capabilityRequest(
+                AiAssistantKey.LAB_ASSISTANT, 7L, AiCapability.LAB_SHIFT_CREATE_DRAFT, 10L, null);
+        AiAuthorizedContext authorizedContext = context(capabilityRequest);
+        when(availabilityService.requireAvailableForActor(AiAssistantKey.LAB_ASSISTANT)).thenReturn(availability);
+        when(contextFacade.build(any())).thenReturn(authorizedContext);
+        when(gatewayClient.chat(any())).thenReturn(new AiChatResponse(
+                AiAssistantKey.LAB_ASSISTANT.name(), "Draft", 12, 7, Map.of()));
+
+        service.chat(AiAssistantKey.LAB_ASSISTANT, publicRequest, "request-relative-date");
+
+        ArgumentCaptor<AiGatewayRequest> gatewayRequest = ArgumentCaptor.forClass(AiGatewayRequest.class);
+        verify(gatewayClient).chat(gatewayRequest.capture());
+        JsonNode payload = gatewayRequest.getValue().payload();
+        assertEquals(Set.of("assistantKey", "input", "authorizedContext"), fieldSet(payload));
+        assertTrue(payload.path("input").asText().contains("requestTimeUtc=2026-01-01T00:00:00Z"));
+        assertTrue(payload.path("input").asText().contains("defaultTimezone=Asia/Ho_Chi_Minh"));
+        assertTrue(payload.path("input").asText().contains("User request: Create a slot tomorrow"));
+        assertFalse(payload.path("authorizedContext").has("requestTime"));
     }
 
     @Test
