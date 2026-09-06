@@ -322,7 +322,9 @@ class LabAssistantMvp:
                 "laboratory, missingFields containing only DATE, START_TIME, or END_TIME, a concise Vietnamese "
                 "question asking for every missing field, and requiresHumanReview=true. Otherwise return only "
                 "one JSON object with kind LAB_SHIFT_CREATE_DRAFT, integer labRef equal to the authorized "
-                "laboratory, RFC3339 UTC startTime and endTime, positive integer capacity, and "
+                "laboratory, startLocalDateTime and endLocalDateTime formatted exactly as "
+                "YYYY-MM-DDTHH:mm:ss in the requested local wall-clock time, IANA timeZone, positive integer "
+                "capacity, and "
                 "requiresHumanReview=true. Never invent a missing date, start time, or end time."
             )
         else:

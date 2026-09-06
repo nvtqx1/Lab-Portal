@@ -308,13 +308,26 @@ class AiSuggestionPayloadValidatorImplTest {
     void createLabShiftRequiresExactTypedPayload() throws Exception {
         JsonNode payload = OBJECT_MAPPER.readTree("""
                 {"kind":"LAB_SHIFT_CREATE_DRAFT","labRef":10,
-                 "startTime":"2026-09-10T01:00:00Z","endTime":"2026-09-10T03:00:00Z",
+                 "startLocalDateTime":"2026-09-10T08:00:00",
+                 "endLocalDateTime":"2026-09-10T10:00:00","timeZone":"Asia/Ho_Chi_Minh",
                  "capacity":20,"requiresHumanReview":true}
                 """);
 
         assertDoesNotThrow(() -> validator.validate(response("CREATE_LAB_SHIFT", payload)));
 
         ((ObjectNode) payload).put("labRef", 0);
+        assertInvalid(() -> validator.validate(response("CREATE_LAB_SHIFT", payload)));
+    }
+
+    @Test
+    void createLabShiftRejectsAnUnknownTimeZone() throws Exception {
+        JsonNode payload = OBJECT_MAPPER.readTree("""
+                {"kind":"LAB_SHIFT_CREATE_DRAFT","labRef":10,
+                 "startLocalDateTime":"2026-09-10T08:00:00",
+                 "endLocalDateTime":"2026-09-10T10:00:00","timeZone":"Not/A_Time_Zone",
+                 "capacity":20,"requiresHumanReview":true}
+                """);
+
         assertInvalid(() -> validator.validate(response("CREATE_LAB_SHIFT", payload)));
     }
 

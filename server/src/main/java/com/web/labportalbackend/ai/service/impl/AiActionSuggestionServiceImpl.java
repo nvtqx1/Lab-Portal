@@ -29,6 +29,10 @@ import com.web.labportalbackend.common.exception.ResourceNotFoundException;
 import java.time.DateTimeException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -88,8 +92,8 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
         }
         StoredLabShift stored = new StoredLabShift(
                 authorizedLabId,
-                parseInstant(payload.get("startTime").textValue()),
-                parseInstant(payload.get("endTime").textValue()),
+                toInstant(payload.get("startLocalDateTime").textValue(), payload.get("timeZone").textValue()),
+                toInstant(payload.get("endLocalDateTime").textValue(), payload.get("timeZone").textValue()),
                 payload.get("capacity").intValue());
         if (!stored.startTime().isAfter(clock.instant()) || !stored.startTime().isBefore(stored.endTime())) {
             throw invalidSuggestion();
@@ -226,9 +230,15 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
         }
     }
 
-    private static Instant parseInstant(String value) {
+    private static Instant toInstant(String localDateTimeValue, String timeZoneValue) {
         try {
-            return Instant.parse(value);
+            LocalDateTime localDateTime = LocalDateTime.parse(localDateTimeValue);
+            ZoneId timeZone = ZoneId.of(timeZoneValue);
+            List<ZoneOffset> validOffsets = timeZone.getRules().getValidOffsets(localDateTime);
+            if (validOffsets.size() != 1) {
+                throw invalidSuggestion();
+            }
+            return localDateTime.toInstant(validOffsets.getFirst());
         } catch (DateTimeException exception) {
             throw invalidSuggestion();
         }
