@@ -29,6 +29,7 @@ import com.web.labportalbackend.ai.service.AiActionSuggestionService;
 import com.web.labportalbackend.ai.service.AiToolCandidate;
 import com.web.labportalbackend.ai.service.AiToolCandidateCatalog;
 import com.web.labportalbackend.ai.service.AiToolRegistry;
+import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidationException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -195,6 +196,60 @@ class AiUnifiedChatServiceImplTest {
         assertEquals(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED, response.type());
         assertEquals("Bạn muốn ca bắt đầu và kết thúc lúc mấy giờ?", response.answer());
         verifyNoInteractions(actionSuggestionService);
+    }
+
+    @Test
+    void invalidShiftDraftBecomesSafeRefusalInsteadOfPreviewOrServerError() {
+        AiToolCandidate shiftCandidate = new AiToolCandidate(
+                AiAssistantKey.LAB_ASSISTANT, "v1", AiToolId.LAB_SHIFT_CREATE_DRAFT,
+                "Create a time slot in managed Lab 10",
+                new AiToolCandidate.ResourceReference(AiResourceType.LABORATORY, 10L), null);
+        when(candidateCatalog.candidates()).thenReturn(List.of(shiftCandidate));
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(
+                AiToolPlanningDecision.TOOL_REQUEST, null,
+                shiftCandidate.toCanonicalToolRequest(OBJECT_MAPPER), 5, 2));
+        when(toolRegistry.get(AiToolId.LAB_SHIFT_CREATE_DRAFT)).thenReturn(
+                AiToolRegistryServiceImpl.defaultDefinitions().stream()
+                        .filter(definition -> definition.id() == AiToolId.LAB_SHIFT_CREATE_DRAFT)
+                        .findFirst().orElseThrow());
+        when(assistantGatewayService.chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-invalid")))
+                .thenReturn(new AiAssistantChatResponse(
+                        "LAB_ASSISTANT", "I cannot provide that response from the authorized context available.",
+                        11, 4, List.of()));
+
+        var response = service.chat(request(
+                "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ."), "request-invalid");
+
+        assertEquals(AiUnifiedChatResponseType.REFUSED, response.type());
+        verifyNoInteractions(actionSuggestionService);
+    }
+
+    @Test
+    void schemaInvalidShiftDraftBecomesSafeRefusalInsteadOfServerError() {
+        AiToolCandidate shiftCandidate = new AiToolCandidate(
+                AiAssistantKey.LAB_ASSISTANT, "v1", AiToolId.LAB_SHIFT_CREATE_DRAFT,
+                "Create a time slot in managed Lab 10",
+                new AiToolCandidate.ResourceReference(AiResourceType.LABORATORY, 10L), null);
+        when(candidateCatalog.candidates()).thenReturn(List.of(shiftCandidate));
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(
+                AiToolPlanningDecision.TOOL_REQUEST, null,
+                shiftCandidate.toCanonicalToolRequest(OBJECT_MAPPER), 5, 2));
+        when(toolRegistry.get(AiToolId.LAB_SHIFT_CREATE_DRAFT)).thenReturn(
+                AiToolRegistryServiceImpl.defaultDefinitions().stream()
+                        .filter(definition -> definition.id() == AiToolId.LAB_SHIFT_CREATE_DRAFT)
+                        .findFirst().orElseThrow());
+        AiAssistantChatResponse generated = new AiAssistantChatResponse(
+                "LAB_ASSISTANT", "{\"kind\":\"LAB_SHIFT_CREATE_DRAFT\"}", 11, 4, List.of());
+        when(assistantGatewayService.chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-schema-invalid")))
+                .thenReturn(generated);
+        when(actionSuggestionService.createLabShiftPreview(10L, generated))
+                .thenThrow(new AiSuggestionPayloadValidationException());
+
+        var response = service.chat(request(
+                "Tạo ca tại AI Research Lab ngày 10/09/2026 từ 15 giờ đến 17 giờ."),
+                "request-schema-invalid");
+
+        assertEquals(AiUnifiedChatResponseType.REFUSED, response.type());
     }
 
     private static AiUnifiedChatRequest request(String input) {

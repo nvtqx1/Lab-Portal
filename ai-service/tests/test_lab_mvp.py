@@ -314,6 +314,96 @@ def test_lab_shift_create_can_request_missing_required_times_without_refusing() 
     assert prompted["authorizedContext"]["context"]["laboratory"]["capacity"] == 24
 
 
+def test_lab_shift_create_asks_for_missing_end_time_without_running_model() -> None:
+    backend = StubGenerationBackend("Must not be used")
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: "
+        "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ."
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    answer = json.loads(response.json()["answer"])
+    assert answer["kind"] == "LAB_SHIFT_CREATE_CLARIFICATION"
+    assert answer["labRef"] == 10
+    assert answer["missingFields"] == ["END_TIME"]
+    assert "kết thúc" in answer["question"]
+    assert backend.calls == 0
+
+
+def test_lab_shift_create_asks_for_missing_date_without_running_model() -> None:
+    backend = StubGenerationBackend("Must not be used")
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: "
+        "Tạo ca tại AI Research Lab từ 9 giờ đến 11 giờ."
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    answer = json.loads(response.json()["answer"])
+    assert answer["kind"] == "LAB_SHIFT_CREATE_CLARIFICATION"
+    assert answer["labRef"] == 10
+    assert answer["missingFields"] == ["DATE"]
+    assert "ngày nào" in answer["question"]
+    assert backend.calls == 0
+
+
+def test_lab_shift_create_asks_for_missing_start_time_when_only_end_time_is_given() -> None:
+    backend = StubGenerationBackend("Must not be used")
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: "
+        "Tạo ca tại AI Research Lab ngày 10 tháng 9 năm 2026, kết thúc lúc 11 giờ."
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    answer = json.loads(response.json()["answer"])
+    assert answer["missingFields"] == ["START_TIME"]
+    assert "bắt đầu" in answer["question"]
+    assert backend.calls == 0
+
+
+@pytest.mark.parametrize(
+    "user_request",
+    [
+        "Tạo ca tại AI Research Lab ngày mai từ 15 giờ đến 17 giờ.",
+        "Tạo ca tại AI Research Lab ngày 08/09/2026 từ 13 giờ 30 đến 15 giờ 30.",
+        "Tạo ca tại AI Research Lab ngày 10 tháng 9 năm 2026 từ 15 giờ đến 17 giờ.",
+    ],
+)
+def test_complete_lab_shift_request_still_runs_model(user_request: str) -> None:
+    draft = {
+        "kind": "LAB_SHIFT_CREATE_DRAFT",
+        "labRef": 10,
+        "startLocalDateTime": "2026-09-08T13:30:00",
+        "endLocalDateTime": "2026-09-08T15:30:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "capacity": 24,
+        "requiresHumanReview": True,
+    }
+    backend = StubGenerationBackend(json.dumps(draft))
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: " + user_request
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    assert json.loads(response.json()["answer"]) == draft
+    assert backend.calls == 1
+
+
 def test_policy_read_returns_guidance_from_authorized_policy_snapshot() -> None:
     backend = StubGenerationBackend("Check-in is allowed for 10 minutes after the slot starts.")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -17,14 +18,14 @@ from app.research_mvp import GenerationBackend
 
 SAFE_REFUSAL = "I cannot safely determine an authorized action for that request."
 WRITE_TOOL_UNAVAILABLE = "Bạn không có công cụ được cấp quyền để tạo ca Lab cho yêu cầu này."
+UNMANAGED_LAB_REFUSAL = "Bạn chỉ có thể tạo ca cho Lab mình đang quản lý."
 SHIFT_CREATE_TOOL = "lab.shift.create.draft"
-_SHIFT_CREATE_PATTERN = re.compile(
-    r"\b(?:tạo|thêm|mở)\b(?:\s+[\w-]+){0,6}\s+ca\b",
-    flags=re.IGNORECASE,
-)
-_NEGATED_SHIFT_CREATE_PATTERN = re.compile(
-    r"\b(?:không|đừng)\b(?:\s+[\w-]+){0,3}\s+(?:tạo|thêm|mở)\b",
-    flags=re.IGNORECASE,
+AVAILABLE_SLOTS_TOOL = "lab.available.slots.read"
+_SHIFT_CREATE_PATTERN = re.compile(r"\b(?:tao|them|mo)\b(?:\s+[\w-]+){0,6}\s+ca\b")
+_NEGATED_SHIFT_CREATE_PATTERN = re.compile(r"\b(?:khong|dung)\b(?:\s+[\w-]+){0,3}\s+(?:tao|them|mo)\b")
+_NEGATED_AVAILABLE_SLOTS_PATTERN = re.compile(r"\b(?:khong|dung)\b(?:\s+[\w-]+){0,3}\s+xem\b")
+_UNMANAGED_LAB_PATTERN = re.compile(
+    r"\blab\b.{0,40}\b(?:ma\s+toi\s+)?khong\s+quan\s+ly\b"
 )
 
 
@@ -45,6 +46,14 @@ class ToolPlanner:
     def plan(self, payload: ToolPlanningRequest) -> ToolPlanningResponse:
         shift_create_intent = self._is_shift_create_intent(payload.input)
         if shift_create_intent:
+            if self._explicitly_requests_unmanaged_lab(payload.input):
+                return ToolPlanningResponse(
+                    decision="REFUSAL",
+                    message=UNMANAGED_LAB_REFUSAL,
+                    tool_request=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                )
             create_candidates = [
                 candidate for candidate in payload.candidates if candidate.tool_id == SHIFT_CREATE_TOOL
             ]
@@ -61,6 +70,18 @@ class ToolPlanner:
                     decision="TOOL_REQUEST",
                     message=None,
                     tool_request=self._canonical_request(create_candidates[0]),
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                )
+        if self._is_available_slots_read_intent(payload.input):
+            read_candidates = [
+                candidate for candidate in payload.candidates if candidate.tool_id == AVAILABLE_SLOTS_TOOL
+            ]
+            if len(read_candidates) == 1:
+                return ToolPlanningResponse(
+                    decision="TOOL_REQUEST",
+                    message=None,
+                    tool_request=self._canonical_request(read_candidates[0]),
                     prompt_tokens=0,
                     completion_tokens=0,
                 )
@@ -127,9 +148,28 @@ class ToolPlanner:
 
     @staticmethod
     def _is_shift_create_intent(user_input: str) -> bool:
-        return bool(_SHIFT_CREATE_PATTERN.search(user_input)) and not bool(
-            _NEGATED_SHIFT_CREATE_PATTERN.search(user_input)
+        normalized = ToolPlanner._normalized(user_input)
+        return bool(_SHIFT_CREATE_PATTERN.search(normalized)) and not bool(
+            _NEGATED_SHIFT_CREATE_PATTERN.search(normalized)
         )
+
+    @staticmethod
+    def _is_available_slots_read_intent(user_input: str) -> bool:
+        normalized = ToolPlanner._normalized(user_input)
+        return (
+            "xem" in normalized
+            and "ca trong" in normalized
+            and not _NEGATED_AVAILABLE_SLOTS_PATTERN.search(normalized)
+        )
+
+    @staticmethod
+    def _explicitly_requests_unmanaged_lab(user_input: str) -> bool:
+        return bool(_UNMANAGED_LAB_PATTERN.search(ToolPlanner._normalized(user_input)))
+
+    @staticmethod
+    def _normalized(value: str) -> str:
+        decomposed = unicodedata.normalize("NFD", value.casefold()).replace("đ", "d")
+        return "".join(character for character in decomposed if not unicodedata.combining(character))
 
     @staticmethod
     def _prompt_candidate(index: int, candidate: ToolCandidate) -> dict[str, object]:

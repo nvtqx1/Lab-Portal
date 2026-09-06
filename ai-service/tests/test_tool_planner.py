@@ -17,7 +17,11 @@ class StubBackend:
         return RuntimeGeneration(text=self.output, prompt_tokens=11, completion_tokens=3)
 
 
-def _manager_shift_request(*, include_create: bool = True) -> ToolPlanningRequest:
+def _manager_shift_request(
+    *,
+    include_create: bool = True,
+    user_input: str = "Tạo ca sử dụng AI Research Lab ngày mai từ 15 giờ đến 17 giờ.",
+) -> ToolPlanningRequest:
     candidates = [
         {
             "assistantKey": "LAB_ASSISTANT",
@@ -41,7 +45,7 @@ def _manager_shift_request(*, include_create: bool = True) -> ToolPlanningReques
         )
     return ToolPlanningRequest.model_validate(
         {
-            "input": "Tạo ca sử dụng AI Research Lab ngày mai từ 15 giờ đến 17 giờ.",
+            "input": user_input,
             "candidates": candidates,
         }
     )
@@ -132,6 +136,31 @@ def test_create_shift_request_without_authorized_write_tool_refuses_instead_of_r
     backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
 
     result = ToolPlanner(backend).plan(_manager_shift_request(include_create=False))
+
+    assert result.decision == "REFUSAL"
+    assert result.tool_request is None
+    assert backend.messages is None
+
+
+def test_negated_create_request_selects_available_slots_read_without_model_routing() -> None:
+    backend = StubBackend('{"decision":"CLARIFICATION","candidateIndex":null,"message":"wrong"}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request(
+        user_input="Không tạo ca. Chỉ cho tôi xem các ca trống của AI Research Lab."
+    ))
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.available.slots.read"
+    assert backend.messages is None
+
+
+def test_explicit_unmanaged_lab_request_refuses_instead_of_substituting_managed_lab() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":1,"message":null}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request(
+        user_input="Tạo ca tại Lab mà tôi không quản lý ngày 10/09/2026 từ 8 giờ đến 10 giờ."
+    ))
 
     assert result.decision == "REFUSAL"
     assert result.tool_request is None
