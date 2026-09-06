@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 public class AiLabAssistantContextBuilder implements AiDomainContextBuilder {
 
     private static final int AVAILABLE_SLOT_LIMIT = 50;
+    private static final int MANAGED_SLOT_LIMIT = 50;
 
     private final LaboratoryRepository laboratoryRepository;
     private final TimeSlotRepository timeSlotRepository;
@@ -95,7 +96,10 @@ public class AiLabAssistantContextBuilder implements AiDomainContextBuilder {
             }
             managedSummary = new AiLabContext.ManagedSummary(
                     timeSlotRepository.countAiContextManagedSlots(input.actorId(), labId, selectedRoleName),
-                    bookingRepository.countAiContextManagedBookings(input.actorId(), labId, selectedRoleName));
+                    bookingRepository.countAiContextManagedBookings(input.actorId(), labId, selectedRoleName),
+                    AiBoundedList.fromOverfetch(timeSlotRepository.findAiContextManagedFutureSlots(
+                            input.actorId(), labId, input.builtAt(), selectedRoleName,
+                            PageRequest.of(0, MANAGED_SLOT_LIMIT + 1)), MANAGED_SLOT_LIMIT));
         }
         return new AiLabContext(lab, slot, booking, managedSummary, labPolicySnapshot, checkinPolicySnapshot,
                 capability.action().name().equals("DRAFT"), policyOrDraftEligibilityLabel(capability));

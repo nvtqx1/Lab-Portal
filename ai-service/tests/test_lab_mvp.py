@@ -114,7 +114,23 @@ def _request(tool_id: str, resource_type: str, resource_id: int):
         if tool_id == "lab.checkin.guidance":
             context["checkinPolicySnapshot"] = {"endInclusive": "2026-09-01T09:15:00Z"}
     if tool_id == "lab.managed.summary":
-        context["managedSummary"] = {"activeSlotCount": 4, "activeBookingCount": 2}
+        context["managedSummary"] = {
+            "activeSlotCount": 4,
+            "activeBookingCount": 2,
+            "futureSlots": {
+                "values": [
+                    {
+                        "id": 31,
+                        "startTime": "2026-09-13T03:00:00Z",
+                        "endTime": "2026-09-13T05:00:00Z",
+                        "status": "AVAILABLE",
+                    }
+                ],
+                "returnedCount": 1,
+                "limit": 50,
+                "truncated": False,
+            },
+        }
     if tool_id == "lab.policy.read":
         context["policyOrDraftEligibilityLabel"] = "POLICY_INFORMATION_ONLY"
         context["labPolicySnapshot"] = {
@@ -374,22 +390,31 @@ def test_lab_shift_create_asks_for_missing_start_time_when_only_end_time_is_give
 
 
 @pytest.mark.parametrize(
-    ("user_request", "expected_start", "expected_end"),
+    ("user_request", "expected_start", "expected_end", "expected_capacity"),
     [
         (
             "Tạo ca tại AI Research Lab ngày mai từ 15 giờ đến 17 giờ.",
             "2026-09-07T15:00:00",
             "2026-09-07T17:00:00",
+            24,
         ),
         (
             "Tạo ca tại AI Research Lab ngày 08/09/2026 từ 13 giờ 30 đến 15 giờ 30.",
             "2026-09-08T13:30:00",
             "2026-09-08T15:30:00",
+            24,
         ),
         (
             "Tạo ca tại AI Research Lab ngày 10 tháng 9 năm 2026 từ 15 giờ đến 17 giờ.",
             "2026-09-10T15:00:00",
             "2026-09-10T17:00:00",
+            24,
+        ),
+        (
+            "Tạo ca tại AI Research Lab ngày 13/09/2026 từ 10 giờ đến 12 giờ, sức chứa 15 người.",
+            "2026-09-13T10:00:00",
+            "2026-09-13T12:00:00",
+            15,
         ),
     ],
 )
@@ -397,6 +422,7 @@ def test_complete_lab_shift_request_builds_deterministic_draft_without_model(
     user_request: str,
     expected_start: str,
     expected_end: str,
+    expected_capacity: int,
 ) -> None:
     backend = StubGenerationBackend("Must not be used")
     request = _request("lab.shift.create.draft", "LABORATORY", 10)
@@ -414,12 +440,26 @@ def test_complete_lab_shift_request_builds_deterministic_draft_without_model(
         "startLocalDateTime": expected_start,
         "endLocalDateTime": expected_end,
         "timeZone": "Asia/Ho_Chi_Minh",
-        "capacity": 24,
+        "capacity": expected_capacity,
         "requiresHumanReview": True,
     }
     assert response.json()["promptTokens"] == 0
     assert response.json()["completionTokens"] == 0
     assert backend.calls == 0
+
+
+def test_managed_summary_passes_bounded_future_slots_to_the_model() -> None:
+    backend = StubGenerationBackend("Ca 31 bắt đầu lúc 10 giờ ngày 13/09/2026.")
+    request = _request("lab.managed.summary", "LABORATORY", 10)
+    request["input"] = "Cho tôi xem các ca đang quản lý tại AI Research Lab ngày 13/09/2026."
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    prompted = json.loads(backend.messages[1]["content"])
+    future_slots = prompted["authorizedContext"]["context"]["managedSummary"]["futureSlots"]
+    assert future_slots["values"][0]["id"] == 31
+    assert future_slots["returnedCount"] == 1
 
 
 def test_complete_lab_shift_request_retries_one_invalid_structured_draft() -> None:

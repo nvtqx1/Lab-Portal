@@ -83,7 +83,7 @@ public class AiToolCandidateCatalogServiceImpl implements AiToolCandidateCatalog
                 candidate(AiCapability.LAB_AVAILABLE_SLOTS_READ,
                         "List future available time slots for managed Lab " + labLabel, lab.getId()),
                 candidate(AiCapability.LAB_MANAGED_SUMMARY,
-                        "Summarize managed Lab " + labLabel, lab.getId()),
+                        "List and summarize current time slots in managed Lab " + labLabel, lab.getId()),
                 candidate(AiCapability.LAB_SHIFT_CREATE_DRAFT,
                         "Create a confirmation preview for a new time slot in managed Lab " + labLabel,
                         lab.getId()),
