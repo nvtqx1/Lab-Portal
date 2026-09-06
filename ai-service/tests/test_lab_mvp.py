@@ -264,8 +264,9 @@ def test_lab_shift_create_returns_validated_non_executable_draft() -> None:
     draft = {
         "kind": "LAB_SHIFT_CREATE_DRAFT",
         "labRef": 10,
-        "startTime": "2026-09-10T01:00:00Z",
-        "endTime": "2026-09-10T03:00:00Z",
+        "startLocalDateTime": "2026-09-10T08:00:00",
+        "endLocalDateTime": "2026-09-10T10:00:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
         "capacity": 20,
         "requiresHumanReview": True,
     }
@@ -307,6 +308,8 @@ def test_lab_shift_create_can_request_missing_required_times_without_refusing() 
     }
     assert "Asia/Ho_Chi_Minh" in backend.messages[0]["content"]
     assert "laboratory.capacity" in backend.messages[0]["content"]
+    assert "startLocalDateTime" in backend.messages[0]["content"]
+    assert "endLocalDateTime" in backend.messages[0]["content"]
     prompted = json.loads(backend.messages[1]["content"])
     assert prompted["authorizedContext"]["context"]["laboratory"]["capacity"] == 24
 

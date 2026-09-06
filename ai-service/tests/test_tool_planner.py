@@ -17,6 +17,36 @@ class StubBackend:
         return RuntimeGeneration(text=self.output, prompt_tokens=11, completion_tokens=3)
 
 
+def _manager_shift_request(*, include_create: bool = True) -> ToolPlanningRequest:
+    candidates = [
+        {
+            "assistantKey": "LAB_ASSISTANT",
+            "schemaVersion": "v1",
+            "toolId": "lab.available.slots.read",
+            "description": "Xem các ca trống của AI Research Lab",
+            "resource": {"resourceType": "LABORATORY", "resourceId": 1},
+            "parentResource": None,
+        }
+    ]
+    if include_create:
+        candidates.append(
+            {
+                "assistantKey": "LAB_ASSISTANT",
+                "schemaVersion": "v1",
+                "toolId": "lab.shift.create.draft",
+                "description": "Tạo bản xem trước ca mới tại AI Research Lab",
+                "resource": {"resourceType": "LABORATORY", "resourceId": 1},
+                "parentResource": None,
+            }
+        )
+    return ToolPlanningRequest.model_validate(
+        {
+            "input": "Tạo ca sử dụng AI Research Lab ngày mai từ 15 giờ đến 17 giờ.",
+            "candidates": candidates,
+        }
+    )
+
+
 def _request() -> ToolPlanningRequest:
     return ToolPlanningRequest.model_validate(
         {
@@ -82,3 +112,27 @@ def test_planner_preserves_a_clarification_without_selecting_a_tool() -> None:
     assert result.decision == "CLARIFICATION"
     assert result.message == "Bạn muốn xem ca nào?"
     assert result.tool_request is None
+
+
+def test_manager_create_shift_request_prefers_create_draft_over_read_only_tool() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request())
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
+    assert result.tool_request.arguments == {
+        "resource": {"resourceType": "LABORATORY", "resourceId": 1}
+    }
+    assert backend.messages is None
+
+
+def test_create_shift_request_without_authorized_write_tool_refuses_instead_of_reading() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request(include_create=False))
+
+    assert result.decision == "REFUSAL"
+    assert result.tool_request is None
+    assert backend.messages is None

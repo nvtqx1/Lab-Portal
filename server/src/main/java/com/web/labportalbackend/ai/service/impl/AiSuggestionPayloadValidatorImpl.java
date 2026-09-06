@@ -8,8 +8,9 @@ import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidator;
 import com.web.labportalbackend.research.enums.TaskPriority;
 import com.web.labportalbackend.research.enums.TaskType;
 import java.time.DateTimeException;
-import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +27,8 @@ public class AiSuggestionPayloadValidatorImpl implements AiSuggestionPayloadVali
     private static final Set<String> CREATE_TASK_PROPOSAL_FIELDS = Set.of(
             "projectId", "groupId", "milestoneId", "title", "description", "priority", "type", "dueDate");
     private static final Set<String> CREATE_LAB_SHIFT_FIELDS = Set.of(
-            "kind", "labRef", "startTime", "endTime", "capacity", "requiresHumanReview");
+            "kind", "labRef", "startLocalDateTime", "endLocalDateTime", "timeZone", "capacity",
+            "requiresHumanReview");
     private static final Set<String> TASK_PRIORITIES = enumNames(TaskPriority.values());
     private static final Set<String> TASK_TYPES = enumNames(TaskType.values());
     private static final Set<String> REPORT_DECISIONS = Set.of("REQUEST_REVISION", "REJECT");
@@ -111,8 +113,11 @@ public class AiSuggestionPayloadValidatorImpl implements AiSuggestionPayloadVali
         validateExactFields(payload, CREATE_LAB_SHIFT_FIELDS);
         requiredExactText(payload, "kind", "LAB_SHIFT_CREATE_DRAFT");
         requiredPositiveIdentifier(payload, "labRef");
-        requiredInstant(payload, "startTime");
-        requiredInstant(payload, "endTime");
+        requiredLocalDateTime(payload, "startLocalDateTime");
+        requiredLocalDateTime(payload, "endLocalDateTime");
+        JsonNode timeZone = required(payload, "timeZone");
+        validateText(timeZone, 1, 100);
+        ZoneId.of(timeZone.textValue());
         JsonNode capacity = required(payload, "capacity");
         if (!capacity.isIntegralNumber() || !capacity.canConvertToInt() || capacity.intValue() <= 0) {
             throw invalid();
@@ -171,13 +176,13 @@ public class AiSuggestionPayloadValidatorImpl implements AiSuggestionPayloadVali
         }
     }
 
-    private void requiredInstant(ObjectNode payload, String field) {
+    private void requiredLocalDateTime(ObjectNode payload, String field) {
         JsonNode node = required(payload, field);
         if (!node.isTextual()) {
             throw invalid();
         }
         try {
-            Instant.parse(node.textValue());
+            LocalDateTime.parse(node.textValue());
         } catch (DateTimeException exception) {
             throw invalid();
         }

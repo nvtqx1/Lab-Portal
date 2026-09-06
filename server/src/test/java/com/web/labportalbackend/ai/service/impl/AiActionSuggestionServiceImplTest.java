@@ -67,8 +67,9 @@ class AiActionSuggestionServiceImplTest {
         AiAssistantChatResponse generated = new AiAssistantChatResponse(
                 "LAB_ASSISTANT",
                 "{\"kind\":\"LAB_SHIFT_CREATE_DRAFT\",\"labRef\":10,"
-                        + "\"startTime\":\"2026-09-10T01:00:00Z\","
-                        + "\"endTime\":\"2026-09-10T03:00:00Z\",\"capacity\":20,"
+                        + "\"startLocalDateTime\":\"2026-09-07T15:00:00\","
+                        + "\"endLocalDateTime\":\"2026-09-07T17:00:00\","
+                        + "\"timeZone\":\"Asia/Ho_Chi_Minh\",\"capacity\":20,"
                         + "\"requiresHumanReview\":true}",
                 12, 8, List.of());
 
@@ -78,6 +79,8 @@ class AiActionSuggestionServiceImplTest {
         assertEquals("CREATE_LAB_SHIFT", preview.actionType());
         assertEquals(10L, preview.labId());
         assertEquals(20, preview.capacity());
+        assertEquals(Instant.parse("2026-09-07T08:00:00Z"), preview.startTime());
+        assertEquals(Instant.parse("2026-09-07T10:00:00Z"), preview.endTime());
         verify(payloadValidator).validate(any());
         verify(timeSlotService, never()).createSlot(any());
     }
@@ -89,8 +92,9 @@ class AiActionSuggestionServiceImplTest {
         AiAssistantChatResponse generated = new AiAssistantChatResponse(
                 "LAB_ASSISTANT",
                 "{\"kind\":\"LAB_SHIFT_CREATE_DRAFT\",\"labRef\":10,"
-                        + "\"startTime\":\"2024-06-14T08:00:00Z\","
-                        + "\"endTime\":\"2024-06-14T10:00:00Z\",\"capacity\":20,"
+                        + "\"startLocalDateTime\":\"2024-06-14T15:00:00\","
+                        + "\"endLocalDateTime\":\"2024-06-14T17:00:00\","
+                        + "\"timeZone\":\"Asia/Ho_Chi_Minh\",\"capacity\":20,"
                         + "\"requiresHumanReview\":true}",
                 12, 8, List.of());
 

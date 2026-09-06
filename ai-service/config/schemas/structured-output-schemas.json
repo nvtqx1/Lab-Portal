@@ -133,13 +133,14 @@
           },
           {
             "type": "object",
-            "required": ["kind", "labRef", "startTime", "endTime", "capacity", "requiresHumanReview"],
+            "required": ["kind", "labRef", "startLocalDateTime", "endLocalDateTime", "timeZone", "capacity", "requiresHumanReview"],
             "additionalProperties": false,
             "properties": {
               "kind": {"const": "LAB_SHIFT_CREATE_DRAFT"},
               "labRef": {"type": "integer", "minimum": 1},
-              "startTime": {"type": "string", "format": "date-time"},
-              "endTime": {"type": "string", "format": "date-time"},
+              "startLocalDateTime": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"},
+              "endLocalDateTime": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"},
+              "timeZone": {"type": "string", "minLength": 1, "maxLength": 100},
               "capacity": {"type": "integer", "minimum": 1},
               "requiresHumanReview": {"const": true}
             }
