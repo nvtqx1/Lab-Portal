@@ -27,6 +27,13 @@ _NEGATED_AVAILABLE_SLOTS_PATTERN = re.compile(r"\b(?:khong|dung)\b(?:\s+[\w-]+){
 _UNMANAGED_LAB_PATTERN = re.compile(
     r"\blab\b.{0,40}\b(?:ma\s+toi\s+)?khong\s+quan\s+ly\b"
 )
+_REQUESTED_LAB_PATTERN = re.compile(
+    r"\btai\s+(?:lab\s+)?(?P<label>.+?)(?=\s+(?:vao\s+)?ngay\b|\s+tu\b|,|$)"
+)
+_CANDIDATE_LAB_PATTERNS = (
+    re.compile(r"\bmanaged\s+lab\s+(?P<label>.+)$"),
+    re.compile(r"\btai\s+(?P<label>.+)$"),
+)
 
 
 class _ModelDecision(BaseModel):
@@ -65,6 +72,20 @@ class ToolPlanner:
                     prompt_tokens=0,
                     completion_tokens=0,
                 )
+            requested_lab = self._requested_lab_label(payload.input)
+            if requested_lab is not None:
+                create_candidates = [
+                    candidate for candidate in create_candidates
+                    if self._candidate_lab_label(candidate) == requested_lab
+                ]
+                if not create_candidates:
+                    return ToolPlanningResponse(
+                        decision="REFUSAL",
+                        message=UNMANAGED_LAB_REFUSAL,
+                        tool_request=None,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                    )
             if len(create_candidates) == 1:
                 return ToolPlanningResponse(
                     decision="TOOL_REQUEST",
@@ -165,6 +186,23 @@ class ToolPlanner:
     @staticmethod
     def _explicitly_requests_unmanaged_lab(user_input: str) -> bool:
         return bool(_UNMANAGED_LAB_PATTERN.search(ToolPlanner._normalized(user_input)))
+
+    @staticmethod
+    def _requested_lab_label(user_input: str) -> str | None:
+        match = _REQUESTED_LAB_PATTERN.search(ToolPlanner._normalized(user_input))
+        if match is None:
+            return None
+        label = match.group("label").strip()
+        return label.removeprefix("lab ").strip() or None
+
+    @staticmethod
+    def _candidate_lab_label(candidate: ToolCandidate) -> str | None:
+        description = ToolPlanner._normalized(candidate.description)
+        for pattern in _CANDIDATE_LAB_PATTERNS:
+            match = pattern.search(description)
+            if match is not None:
+                return match.group("label").strip()
+        return None
 
     @staticmethod
     def _normalized(value: str) -> str:

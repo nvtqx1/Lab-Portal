@@ -165,9 +165,10 @@ class LabAssistantMvp:
                     resources,
                 )
         json_output = tool_id in _DRAFT_TOOLS
+        messages = self._messages(payload.input, tool_id, context)
         generation = self._backend.generate(
             AssistantKey.LAB_ASSISTANT,
-            self._messages(payload.input, tool_id, context),
+            messages,
             json_output=json_output,
         )
         if json_output:
@@ -177,6 +178,30 @@ class LabAssistantMvp:
                 generation.text,
                 resources,
             )
+            if validation.validation_status != "VALID" and tool_id == _SHIFT_CREATE_DRAFT_TOOL:
+                retry = self._backend.generate(
+                    AssistantKey.LAB_ASSISTANT,
+                    (*messages, {
+                        "role": "user",
+                        "content": (
+                            "The previous response failed validation. Re-read the original request and "
+                            "authorized context, then return exactly one JSON object matching the required "
+                            "LAB_SHIFT_CREATE_DRAFT or LAB_SHIFT_CREATE_CLARIFICATION schema."
+                        ),
+                    }),
+                    json_output=True,
+                )
+                generation = RuntimeGeneration(
+                    text=retry.text,
+                    prompt_tokens=generation.prompt_tokens + retry.prompt_tokens,
+                    completion_tokens=generation.completion_tokens + retry.completion_tokens,
+                )
+                validation = self._output_validator.validate(
+                    self._profile,
+                    "STRUCTURED_DRAFT",
+                    generation.text,
+                    resources,
+                )
             if validation.validation_status != "VALID":
                 return self._safe_refusal(generation)
             answer = json.dumps(json.loads(generation.text), ensure_ascii=False, separators=(",", ":"))
