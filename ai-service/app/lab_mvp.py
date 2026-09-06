@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
@@ -35,6 +36,20 @@ _TIME_PATTERN = re.compile(
     r"|\b(?:[01]?\d|2[0-3])h(?:[0-5]\d)?\b"
 )
 _END_TIME_CUE_PATTERN = re.compile(r"\b(?:den|ket\s+thuc(?:\s+luc)?)\s+(?:[01]?\d|2[0-3])")
+_REQUEST_TIME_PATTERN = re.compile(r"\brequestTimeUtc=(?P<value>[^,\s]+)")
+_DEFAULT_TIMEZONE_PATTERN = re.compile(r"\bdefaultTimezone=(?P<value>[A-Za-z_]+/[A-Za-z0-9_+.-]+)")
+_USER_TIMEZONE_PATTERN = re.compile(
+    r"\b(?:múi\s+giờ|mui\s+gio|time\s*zone|timezone)\s+(?P<value>[A-Za-z_]+/[A-Za-z0-9_+.-]+)",
+    re.IGNORECASE,
+)
+_SLASH_DATE_PATTERN = re.compile(
+    r"\b(?P<day>\d{1,2})[/-](?P<month>\d{1,2})(?:[/-](?P<year>\d{2,4}))?\b"
+)
+_ISO_DATE_PATTERN = re.compile(r"\b(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})\b")
+_WORD_DATE_PATTERN = re.compile(
+    r"\bngay\s+(?P<day>\d{1,2})\s+thang\s+(?P<month>\d{1,2})(?:\s+nam\s+(?P<year>\d{4}))?\b"
+)
+_CAPACITY_PATTERN = re.compile(r"\bsuc\s+chua\s+(?P<value>\d+)\b")
 _TOOL_SHAPES = {
     _POLICY_TOOL: ("LABORATORY", "READ_ONLY"),
     "lab.slot.read": ("TIME_SLOT", "READ_ONLY"),
@@ -164,6 +179,9 @@ class LabAssistantMvp:
                     missing_fields,
                     resources,
                 )
+            draft = self._deterministic_shift_draft(payload.input, context)
+            if draft is not None:
+                return self._shift_draft(draft, resources)
         json_output = tool_id in _DRAFT_TOOLS
         messages = self._messages(payload.input, tool_id, context)
         generation = self._backend.generate(
@@ -228,6 +246,35 @@ class LabAssistantMvp:
         )
         return candidate if validation.validation_status == "VALID" else self._safe_refusal(generation)
 
+    def _shift_draft(
+        self,
+        payload: dict[str, JsonValue],
+        resources: list[dict[str, JsonValue]],
+    ) -> ChatResponse:
+        answer = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        structured_validation = self._output_validator.validate(
+            self._profile,
+            "STRUCTURED_DRAFT",
+            answer,
+            resources,
+        )
+        if structured_validation.validation_status != "VALID":
+            return self._safe_refusal()
+        candidate = ChatResponse(
+            assistant_key=AssistantKey.LAB_ASSISTANT,
+            answer=answer,
+            prompt_tokens=0,
+            completion_tokens=0,
+            metadata={"resourceReferences": resources, "draftOnly": True},
+        )
+        response_validation = self._output_validator.validate(
+            self._profile,
+            "CHAT_RESPONSE",
+            candidate.model_dump(by_alias=True, mode="json"),
+            resources,
+        )
+        return candidate if response_validation.validation_status == "VALID" else self._safe_refusal()
+
     def _shift_clarification(
         self,
         lab_id: int,
@@ -290,6 +337,116 @@ class LabAssistantMvp:
         elif len(times) == 1:
             missing.append("START_TIME" if _END_TIME_CUE_PATTERN.search(normalized) else "END_TIME")
         return tuple(missing)
+
+    @staticmethod
+    def _deterministic_shift_draft(
+        user_input: str,
+        context: _LabAuthorizedContext,
+    ) -> dict[str, JsonValue] | None:
+        if _USER_REQUEST_MARKER not in user_input or not isinstance(context.context, _LabContext):
+            return None
+        request = user_input.rsplit(_USER_REQUEST_MARKER, 1)[-1]
+        normalized = LabAssistantMvp._normalized(request)
+        timezone_name = LabAssistantMvp._shift_timezone(user_input, request)
+        request_date = LabAssistantMvp._request_local_date(user_input, timezone_name)
+        shift_date = LabAssistantMvp._shift_date(normalized, request_date)
+        shift_times = [LabAssistantMvp._shift_time(value) for value in _TIME_PATTERN.findall(normalized)]
+        if shift_date is None or len(shift_times) != 2 or any(value is None for value in shift_times):
+            return None
+        start_time, end_time = shift_times
+        if start_time is None or end_time is None:
+            return None
+        start = datetime.combine(shift_date, start_time)
+        end = datetime.combine(shift_date, end_time)
+        if end <= start:
+            return None
+        capacity_match = _CAPACITY_PATTERN.search(normalized)
+        capacity = (
+            int(capacity_match.group("value"))
+            if capacity_match is not None
+            else context.context.laboratory.capacity
+        )
+        if capacity is None or capacity <= 0:
+            return None
+        return {
+            "kind": "LAB_SHIFT_CREATE_DRAFT",
+            "labRef": context.context.laboratory.id,
+            "startLocalDateTime": start.isoformat(timespec="seconds"),
+            "endLocalDateTime": end.isoformat(timespec="seconds"),
+            "timeZone": timezone_name,
+            "capacity": capacity,
+            "requiresHumanReview": True,
+        }
+
+    @staticmethod
+    def _shift_timezone(full_input: str, request: str) -> str:
+        user_match = _USER_TIMEZONE_PATTERN.search(request)
+        if user_match is not None:
+            return user_match.group("value").rstrip(".,;:")
+        default_match = _DEFAULT_TIMEZONE_PATTERN.search(full_input)
+        return (
+            default_match.group("value").rstrip(".,;:")
+            if default_match is not None
+            else "Asia/Ho_Chi_Minh"
+        )
+
+    @staticmethod
+    def _request_local_date(full_input: str, timezone_name: str) -> date | None:
+        match = _REQUEST_TIME_PATTERN.search(full_input)
+        if match is None:
+            return None
+        try:
+            instant = datetime.fromisoformat(match.group("value").replace("Z", "+00:00"))
+            try:
+                local_timezone = ZoneInfo(timezone_name)
+            except ZoneInfoNotFoundError:
+                if timezone_name not in {"Asia/Ho_Chi_Minh", "Asia/Saigon", "Asia/Bangkok"}:
+                    return None
+                local_timezone = timezone(timedelta(hours=7))
+            return instant.astimezone(local_timezone).date()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _shift_date(normalized_request: str, request_date: date | None) -> date | None:
+        if request_date is None:
+            return None
+        if re.search(r"\b(?:ngay\s+mai|tomorrow)\b", normalized_request):
+            return request_date + timedelta(days=1)
+        if re.search(r"\bngay\s+kia\b", normalized_request):
+            return request_date + timedelta(days=2)
+        if re.search(r"\b(?:hom\s+nay|today)\b", normalized_request):
+            return request_date
+        for pattern in (_ISO_DATE_PATTERN, _SLASH_DATE_PATTERN, _WORD_DATE_PATTERN):
+            match = pattern.search(normalized_request)
+            if match is None:
+                continue
+            year_text = match.groupdict().get("year")
+            year = int(year_text) if year_text else request_date.year
+            if year < 100:
+                year += 2000
+            try:
+                return date(year, int(match.group("month")), int(match.group("day")))
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _shift_time(value: str) -> time | None:
+        normalized = value.strip()
+        match = re.fullmatch(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})", normalized)
+        if match is None:
+            match = re.fullmatch(r"(?P<hour>\d{1,2})h(?P<minute>\d{1,2})?", normalized)
+        if match is None:
+            match = re.fullmatch(r"(?P<hour>\d{1,2})\s+gio(?:\s+(?P<minute>\d{1,2}))?", normalized)
+        if match is None:
+            return None
+        hour = int(match.group("hour"))
+        minute = int(match.group("minute") or 0)
+        try:
+            return time(hour, minute)
+        except ValueError:
+            return None
 
     @staticmethod
     def _missing_field_labels(missing_fields: tuple[str, ...]) -> str:
