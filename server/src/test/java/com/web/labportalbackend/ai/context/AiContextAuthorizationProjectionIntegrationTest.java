@@ -43,6 +43,7 @@ import com.web.labportalbackend.research.repository.TaskRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -195,15 +196,21 @@ class AiContextAuthorizationProjectionIntegrationTest {
                 Instant.parse("2026-08-07T10:00:00Z"), 1, TimeSlotStatus.AVAILABLE);
         entityManager.persist(slot);
         entityManager.flush();
+        Instant managedReadAt = Instant.parse("2026-08-07T08:00:00Z");
 
         assertTrue(slots.findAiContextSlot(manager.getId(), lab.getId(), slot.getId(), true, false, Instant.now(), MANAGER_ROLE).isPresent());
         assertEquals(1, slots.countAiContextManagedSlots(manager.getId(), lab.getId(), MANAGER_ROLE));
+        assertEquals(List.of(slot.getId()), slots.findAiContextManagedFutureSlots(
+                        manager.getId(), lab.getId(), managedReadAt, MANAGER_ROLE, PageRequest.of(0, 50))
+                .stream().map(AiLabContext.Slot::id).toList());
 
         manager.removeRole(managerRole);
         users.saveAndFlush(manager);
 
         assertFalse(slots.findAiContextSlot(manager.getId(), lab.getId(), slot.getId(), true, false, Instant.now(), MANAGER_ROLE).isPresent());
         assertEquals(0, slots.countAiContextManagedSlots(manager.getId(), lab.getId(), MANAGER_ROLE));
+        assertTrue(slots.findAiContextManagedFutureSlots(
+                manager.getId(), lab.getId(), managedReadAt, MANAGER_ROLE, PageRequest.of(0, 50)).isEmpty());
     }
 
     @Test

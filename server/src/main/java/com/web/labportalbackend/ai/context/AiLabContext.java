@@ -33,8 +33,10 @@ public record AiLabContext(
     public record OwnBooking(Long id, BookingStatus status, Slot slot) {
     }
 
-    /** Aggregate-only managed-lab view; no booking or membership rows are represented. */
-    public record ManagedSummary(long activeSlotCount, long activeBookingCount) {
+    /** Bounded managed-lab view; no booking or membership rows are represented. */
+    public record ManagedSummary(long activeSlotCount,
+                                 long activeBookingCount,
+                                 AiBoundedList<Slot> futureSlots) {
     }
 
     /** Public operational policy subset; account, upload, and research settings are excluded. */

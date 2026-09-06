@@ -190,3 +190,29 @@ def test_named_authorized_lab_still_selects_the_create_candidate() -> None:
     assert result.tool_request is not None
     assert result.tool_request.tool_id == "lab.shift.create.draft"
     assert backend.messages is None
+
+
+def test_manager_managed_shift_request_selects_managed_summary_without_model() -> None:
+    backend = StubBackend('{"decision":"CLARIFICATION","candidateIndex":null,"message":"wrong"}')
+    request = _manager_shift_request(
+        user_input="Cho tôi xem các ca đang quản lý tại AI Research Lab ngày 13/09/2026."
+    )
+    payload = request.model_dump(by_alias=True, mode="json")
+    payload["candidates"].append(
+        {
+            "assistantKey": "LAB_ASSISTANT",
+            "schemaVersion": "v1",
+            "toolId": "lab.managed.summary",
+            "description": "List and summarize time slots in managed Lab AI Research Lab",
+            "resource": {"resourceType": "LABORATORY", "resourceId": 1},
+            "parentResource": None,
+        }
+    )
+    request = ToolPlanningRequest.model_validate(payload)
+
+    result = ToolPlanner(backend).plan(request)
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.managed.summary"
+    assert backend.messages is None

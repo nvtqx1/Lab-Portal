@@ -21,12 +21,14 @@ WRITE_TOOL_UNAVAILABLE = "Bạn không có công cụ được cấp quyền đ�
 UNMANAGED_LAB_REFUSAL = "Bạn chỉ có thể tạo ca cho Lab mình đang quản lý."
 SHIFT_CREATE_TOOL = "lab.shift.create.draft"
 AVAILABLE_SLOTS_TOOL = "lab.available.slots.read"
+MANAGED_SUMMARY_TOOL = "lab.managed.summary"
 _SHIFT_CREATE_PATTERN = re.compile(r"\b(?:tao|them|mo)\b(?:\s+[\w-]+){0,6}\s+ca\b")
 _NEGATED_SHIFT_CREATE_PATTERN = re.compile(r"\b(?:khong|dung)\b(?:\s+[\w-]+){0,3}\s+(?:tao|them|mo)\b")
 _NEGATED_AVAILABLE_SLOTS_PATTERN = re.compile(r"\b(?:khong|dung)\b(?:\s+[\w-]+){0,3}\s+xem\b")
 _UNMANAGED_LAB_PATTERN = re.compile(
     r"\blab\b.{0,40}\b(?:ma\s+toi\s+)?khong\s+quan\s+ly\b"
 )
+_MANAGED_SHIFTS_PATTERN = re.compile(r"\bca\b.{0,40}\b(?:dang\s+)?quan\s+ly\b")
 _REQUESTED_LAB_PATTERN = re.compile(
     r"\btai\s+(?:lab\s+)?(?P<label>.+?)(?=\s+(?:vao\s+)?ngay\b|\s+tu\b|,|$)"
 )
@@ -91,6 +93,24 @@ class ToolPlanner:
                     decision="TOOL_REQUEST",
                     message=None,
                     tool_request=self._canonical_request(create_candidates[0]),
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                )
+        if self._is_managed_shift_read_intent(payload.input):
+            managed_candidates = [
+                candidate for candidate in payload.candidates if candidate.tool_id == MANAGED_SUMMARY_TOOL
+            ]
+            requested_lab = self._requested_lab_label(payload.input)
+            if requested_lab is not None:
+                managed_candidates = [
+                    candidate for candidate in managed_candidates
+                    if self._candidate_lab_label(candidate) == requested_lab
+                ]
+            if len(managed_candidates) == 1:
+                return ToolPlanningResponse(
+                    decision="TOOL_REQUEST",
+                    message=None,
+                    tool_request=self._canonical_request(managed_candidates[0]),
                     prompt_tokens=0,
                     completion_tokens=0,
                 )
@@ -182,6 +202,10 @@ class ToolPlanner:
             and "ca trong" in normalized
             and not _NEGATED_AVAILABLE_SLOTS_PATTERN.search(normalized)
         )
+
+    @staticmethod
+    def _is_managed_shift_read_intent(user_input: str) -> bool:
+        return bool(_MANAGED_SHIFTS_PATTERN.search(ToolPlanner._normalized(user_input)))
 
     @staticmethod
     def _explicitly_requests_unmanaged_lab(user_input: str) -> bool:

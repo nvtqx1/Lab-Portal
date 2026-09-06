@@ -105,9 +105,17 @@ class _Booking(_ContextModel):
     slot: _Slot
 
 
+class _BoundedSlots(_ContextModel):
+    values: tuple[_Slot, ...]
+    returned_count: int = Field(ge=0)
+    limit: int = Field(gt=0)
+    truncated: bool
+
+
 class _ManagedSummary(_ContextModel):
     active_slot_count: int = Field(ge=0)
     active_booking_count: int = Field(ge=0)
+    future_slots: _BoundedSlots
 
 
 class _LabPolicySnapshot(_ContextModel):
@@ -131,13 +139,6 @@ class _LabContext(_ContextModel):
     checkin_policy_snapshot: _CheckinPolicySnapshot | None
     draft_only: bool
     policy_or_draft_eligibility_label: str | None
-
-
-class _BoundedSlots(_ContextModel):
-    values: tuple[_Slot, ...]
-    returned_count: int = Field(ge=0)
-    limit: int = Field(gt=0)
-    truncated: bool
 
 
 class _LabAvailableSlotsContext(_ContextModel):
@@ -503,9 +504,7 @@ class LabAssistantMvp:
         if tool_id == "lab.available.slots.read":
             return (
                 isinstance(context, _LabAvailableSlotsContext)
-                and context.available_slots.returned_count == len(context.available_slots.values)
-                and context.available_slots.returned_count <= context.available_slots.limit
-                and all(slot.end_time > slot.start_time for slot in context.available_slots.values)
+                and LabAssistantMvp._bounded_slots_are_valid(context.available_slots)
             )
         if not isinstance(context, _LabContext):
             return False
@@ -555,6 +554,7 @@ class LabAssistantMvp:
                 and context.lab_policy_snapshot is None
                 and context.checkin_policy_snapshot is None
                 and context.policy_or_draft_eligibility_label is None
+                and LabAssistantMvp._bounded_slots_are_valid(context.managed_summary.future_slots)
             )
         if tool_id == _SHIFT_CREATE_DRAFT_TOOL:
             return (
@@ -567,6 +567,14 @@ class LabAssistantMvp:
                 and context.policy_or_draft_eligibility_label == "DRAFT_ONLY_NO_SHIFT_WRITE"
             )
         return False
+
+    @staticmethod
+    def _bounded_slots_are_valid(slots: _BoundedSlots) -> bool:
+        return (
+            slots.returned_count == len(slots.values)
+            and slots.returned_count <= slots.limit
+            and all(slot.end_time > slot.start_time for slot in slots.values)
+        )
 
     @staticmethod
     def _projected_resource_id(

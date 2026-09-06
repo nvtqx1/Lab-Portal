@@ -94,6 +94,36 @@ class AiLabAssistantContextBuilderTest {
         verify(bookings, never()).countAiContextManagedBookings(7L, 10L, "LAB_MANAGER");
     }
 
+    @Test void managedSummaryIncludesBoundedFutureSlotsFromTheAuthorizedLab() {
+        LaboratoryRepository labs = mock(LaboratoryRepository.class);
+        TimeSlotRepository slots = mock(TimeSlotRepository.class);
+        BookingRepository bookings = mock(BookingRepository.class);
+        Instant readAt = Instant.parse("2026-09-06T08:00:00Z");
+        when(labs.existsAiContextManagedLab(7L, 10L, "LAB_MANAGER")).thenReturn(true);
+        when(labs.findAiContextLaboratory(7L, 10L, "LAB_MANAGER"))
+                .thenReturn(Optional.of(new AiLabContext.Laboratory(10L, "AI Research Lab", null, 30)));
+        when(slots.countAiContextManagedSlots(7L, 10L, "LAB_MANAGER")).thenReturn(4L);
+        when(bookings.countAiContextManagedBookings(7L, 10L, "LAB_MANAGER")).thenReturn(2L);
+        List<AiLabContext.Slot> futureSlots = List.of(new AiLabContext.Slot(
+                31L, Instant.parse("2026-09-13T03:00:00Z"),
+                Instant.parse("2026-09-13T05:00:00Z"),
+                com.web.labportalbackend.common.enums.TimeSlotStatus.AVAILABLE));
+        when(slots.findAiContextManagedFutureSlots(
+                org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(readAt), org.mockito.ArgumentMatchers.eq("LAB_MANAGER"),
+                any())).thenReturn(futureSlots);
+        AiLabAssistantContextBuilder builder = new AiLabAssistantContextBuilder(
+                labs, slots, bookings, mock(SystemConfigService.class));
+
+        AiLabContext context = (AiLabContext) builder.build(managedSummaryInput(readAt));
+
+        assertEquals(4L, context.managedSummary().activeSlotCount());
+        assertEquals(2L, context.managedSummary().activeBookingCount());
+        assertEquals(List.of(31L), context.managedSummary().futureSlots().values().stream()
+                .map(AiLabContext.Slot::id).toList());
+        assertEquals(false, context.managedSummary().futureSlots().truncated());
+    }
+
     @Test void bookingDraftExposesOnlyTheFixedDraftEligibilityLabel() {
         LaboratoryRepository labs = mock(LaboratoryRepository.class);
         TimeSlotRepository slots = mock(TimeSlotRepository.class);
@@ -147,13 +177,17 @@ class AiLabAssistantContextBuilderTest {
     }
 
     private static TrustedContextInput managedSummaryInput() {
+        return managedSummaryInput(Instant.now());
+    }
+
+    private static TrustedContextInput managedSummaryInput(Instant readAt) {
         AiCapabilityDecision d = new AiCapabilityDecision(true, 7L, com.web.labportalbackend.ai.enums.AiAssistantSystemRole.LAB_MANAGER, AiAssistantKey.LAB_ASSISTANT,
                 AiAssistantDomain.LAB, AiCapability.LAB_MANAGED_SUMMARY,
                 new AiCapabilityDecision.ResolvedResource(AiResourceType.LABORATORY, 10L, 10L,
                         null, null, null, AiResourceScope.MANAGED_LAB),
                 AiCapabilityDecisionReason.ALLOWED_BY_EFFECTIVE_PERMISSION, null,
                 AiActionRiskBoundary.READ_ONLY, Set.of(), null);
-        return new TrustedContextInput(d, 7L, null, Instant.now());
+        return new TrustedContextInput(d, 7L, null, readAt);
     }
 
     private static TrustedContextInput availableSlotsInput(Instant readAt) {

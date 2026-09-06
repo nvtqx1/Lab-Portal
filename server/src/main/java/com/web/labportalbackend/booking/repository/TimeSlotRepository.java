@@ -225,4 +225,25 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
             """)
     long countAiContextManagedSlots(@Param("actorId") Long actorId, @Param("labId") Long labId,
                                     @Param("selectedRoleName") String selectedRoleName);
+
+    @Query("""
+            SELECT new com.web.labportalbackend.ai.context.AiLabContext$Slot(
+                ts.id, ts.startTime, ts.endTime, ts.status)
+            FROM TimeSlot ts JOIN ts.lab l
+            WHERE l.id = :labId AND l.manager.id = :actorId
+              AND ts.endTime >= :now
+              AND ts.active = true AND ts.deleted = false
+              AND l.active = true AND l.deleted = false
+              AND EXISTS (SELECT u.id FROM User u WHERE u.id = :actorId AND u.active = true
+                          AND u.deleted = false AND u.status = com.web.labportalbackend.common.enums.UserStatus.ACTIVE)
+              AND EXISTS (SELECT r.id FROM User roleActor JOIN roleActor.roles r
+                          WHERE roleActor.id = :actorId AND r.name = :selectedRoleName)
+            ORDER BY ts.startTime ASC, ts.id ASC
+            """)
+    List<AiLabContext.Slot> findAiContextManagedFutureSlots(
+            @Param("actorId") Long actorId,
+            @Param("labId") Long labId,
+            @Param("now") Instant now,
+            @Param("selectedRoleName") String selectedRoleName,
+            Pageable pageable);
 }
