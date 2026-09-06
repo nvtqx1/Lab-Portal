@@ -165,3 +165,28 @@ def test_explicit_unmanaged_lab_request_refuses_instead_of_substituting_managed_
     assert result.decision == "REFUSAL"
     assert result.tool_request is None
     assert backend.messages is None
+
+
+def test_named_unmanaged_lab_refuses_instead_of_substituting_the_only_managed_lab() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":1,"message":null}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request(
+        user_input="Tạo ca tại Lab Robotics Lab ngày 10/09/2026 từ 8 giờ đến 10 giờ."
+    ))
+
+    assert result.decision == "REFUSAL"
+    assert result.tool_request is None
+    assert backend.messages is None
+
+
+def test_named_authorized_lab_still_selects_the_create_candidate() -> None:
+    backend = StubBackend('{"decision":"REFUSAL","candidateIndex":null,"message":"wrong"}')
+
+    result = ToolPlanner(backend).plan(_manager_shift_request(
+        user_input="Tạo ca tại AI Research Lab ngày 10/09/2026 từ 8 giờ đến 10 giờ."
+    ))
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
+    assert backend.messages is None

@@ -19,6 +19,10 @@ function newTurnId() {
   return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`;
 }
 
+function shouldDiscardPendingClarification(input: string) {
+  return /^(?:hủy|huỷ|bỏ qua|thôi|không tạo)\b/i.test(input.trim());
+}
+
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     const body = error.response?.data as Partial<Response<unknown>> | undefined;
@@ -100,6 +104,7 @@ export function AssistantPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [validationError, setValidationError] = useState('');
   const conversationEndRef = useRef<HTMLDivElement>(null);
+  const pendingClarificationRef = useRef<string | null>(null);
   const chatMutation = useUnifiedAssistantChat();
   const actionMutation = useResolveAssistantAction();
 
@@ -115,14 +120,31 @@ export function AssistantPage() {
       return;
     }
 
+    const pendingClarification = shouldDiscardPendingClarification(question)
+      ? null
+      : pendingClarificationRef.current;
+    const requestInput = pendingClarification
+      ? `${pendingClarification}\nThông tin bổ sung từ người dùng: ${question}`
+      : question;
+    if (requestInput.length > 32768) {
+      setValidationError('Nội dung hội thoại đang chờ quá dài. Vui lòng nhập lại yêu cầu đầy đủ.');
+      pendingClarificationRef.current = null;
+      return;
+    }
+
     const turnId = newTurnId();
     setInput('');
     setValidationError('');
     setTurns((current) => [...current, { id: turnId, question }]);
-    chatMutation.mutate({ input: question }, {
-      onSuccess: (response) => setTurns((current) => current.map((turn) => (
-        turn.id === turnId ? { ...turn, response } : turn
-      ))),
+    chatMutation.mutate({ input: requestInput }, {
+      onSuccess: (response) => {
+        pendingClarificationRef.current = response.type === 'CLARIFICATION_REQUIRED'
+          ? requestInput
+          : null;
+        setTurns((current) => current.map((turn) => (
+          turn.id === turnId ? { ...turn, response } : turn
+        )));
+      },
       onError: (error) => setTurns((current) => current.map((turn) => (
         turn.id === turnId ? { ...turn, error: getErrorMessage(error) } : turn
       ))),

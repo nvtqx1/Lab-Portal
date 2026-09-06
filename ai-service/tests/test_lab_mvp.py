@@ -19,8 +19,8 @@ INTERNAL_HEADERS = {
 
 
 class StubGenerationBackend:
-    def __init__(self, output: str) -> None:
-        self.output = output
+    def __init__(self, output: str | list[str]) -> None:
+        self.outputs = [output] if isinstance(output, str) else list(output)
         self.calls = 0
         self.messages = None
 
@@ -30,7 +30,8 @@ class StubGenerationBackend:
         assert assistant_key is AssistantKey.LAB_ASSISTANT
         assert messages[0]["role"] == "system"
         assert "Spring-authorized" in messages[0]["content"]
-        return RuntimeGeneration(text=self.output, prompt_tokens=19, completion_tokens=7)
+        output = self.outputs[min(self.calls - 1, len(self.outputs) - 1)]
+        return RuntimeGeneration(text=output, prompt_tokens=19, completion_tokens=7)
 
 
 class ArtifactReadyLoader:
@@ -401,6 +402,89 @@ def test_complete_lab_shift_request_still_runs_model(user_request: str) -> None:
 
     assert response.status_code == 200
     assert json.loads(response.json()["answer"]) == draft
+    assert backend.calls == 1
+
+
+def test_complete_lab_shift_request_retries_one_invalid_structured_draft() -> None:
+    valid_draft = {
+        "kind": "LAB_SHIFT_CREATE_DRAFT",
+        "labRef": 10,
+        "startLocalDateTime": "2026-09-08T13:30:00",
+        "endLocalDateTime": "2026-09-08T15:30:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "capacity": 24,
+        "requiresHumanReview": True,
+    }
+    backend = StubGenerationBackend(["not-json", json.dumps(valid_draft)])
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: "
+        "Tạo ca tại AI Research Lab vào ngày 08/09/2026 từ 13 giờ 30 đến 15 giờ 30."
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    assert json.loads(response.json()["answer"]) == valid_draft
+    assert response.json()["promptTokens"] == 38
+    assert response.json()["completionTokens"] == 14
+    assert backend.calls == 2
+    assert "failed validation" in backend.messages[-1]["content"]
+
+
+def test_complete_lab_shift_request_stops_after_one_invalid_retry() -> None:
+    backend = StubGenerationBackend(["not-json", "still-not-json"])
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: "
+        "Tạo ca tại AI Research Lab vào ngày 08/09/2026 từ 13 giờ 30 đến 15 giờ 30."
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    assert response.json()["metadata"] == {"safeRefusal": True}
+    assert response.json()["promptTokens"] == 38
+    assert response.json()["completionTokens"] == 14
+    assert backend.calls == 2
+
+
+@pytest.mark.parametrize(
+    "user_request",
+    [
+        (
+            "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ. "
+            "Thông tin bổ sung từ người dùng: 11h"
+        ),
+        (
+            "Tạo ca tại AI Research Lab từ 9 giờ đến 11 giờ. "
+            "Thông tin bổ sung từ người dùng: ngày 12/09"
+        ),
+    ],
+)
+def test_lab_shift_follow_up_completes_the_pending_request(user_request: str) -> None:
+    draft = {
+        "kind": "LAB_SHIFT_CREATE_DRAFT",
+        "labRef": 10,
+        "startLocalDateTime": "2026-09-10T09:00:00",
+        "endLocalDateTime": "2026-09-10T11:00:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "capacity": 24,
+        "requiresHumanReview": True,
+    }
+    backend = StubGenerationBackend(json.dumps(draft))
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = (
+        "Trusted Spring temporal context: requestTimeUtc=2026-09-06T08:00:00Z, "
+        "defaultTimezone=Asia/Ho_Chi_Minh. User request: " + user_request
+    )
+
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+
+    assert response.status_code == 200
+    assert json.loads(response.json()["answer"])["kind"] == "LAB_SHIFT_CREATE_DRAFT"
     assert backend.calls == 1
 
 
