@@ -23,9 +23,12 @@ import com.web.labportalbackend.ai.repository.AiActionSuggestionRepository;
 import com.web.labportalbackend.ai.service.AiCurrentActor;
 import com.web.labportalbackend.ai.service.AiCurrentActorProvider;
 import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidator;
+import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidationException;
 import com.web.labportalbackend.booking.dto.response.TimeSlotResponse;
 import com.web.labportalbackend.booking.service.TimeSlotService;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +51,8 @@ class AiActionSuggestionServiceImplTest {
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         service = new AiActionSuggestionServiceImpl(
-                repository, currentActorProvider, payloadValidator, timeSlotService, objectMapper);
+                repository, currentActorProvider, payloadValidator, timeSlotService, objectMapper,
+                Clock.fixed(Instant.parse("2026-09-06T08:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -75,6 +79,25 @@ class AiActionSuggestionServiceImplTest {
         assertEquals(10L, preview.labId());
         assertEquals(20, preview.capacity());
         verify(payloadValidator).validate(any());
+        verify(timeSlotService, never()).createSlot(any());
+    }
+
+    @Test
+    void createLabShiftRejectsModelDraftWhoseStartTimeIsAlreadyPast() {
+        when(currentActorProvider.requireCurrentActor())
+                .thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        AiAssistantChatResponse generated = new AiAssistantChatResponse(
+                "LAB_ASSISTANT",
+                "{\"kind\":\"LAB_SHIFT_CREATE_DRAFT\",\"labRef\":10,"
+                        + "\"startTime\":\"2024-06-14T08:00:00Z\","
+                        + "\"endTime\":\"2024-06-14T10:00:00Z\",\"capacity\":20,"
+                        + "\"requiresHumanReview\":true}",
+                12, 8, List.of());
+
+        assertThrows(AiSuggestionPayloadValidationException.class,
+                () -> service.createLabShiftPreview(10L, generated));
+
+        verify(repository, never()).save(any());
         verify(timeSlotService, never()).createSlot(any());
     }
 
@@ -120,6 +143,22 @@ class AiActionSuggestionServiceImplTest {
         assertThrows(IllegalStateException.class, () -> service.confirm(41L));
 
         verify(timeSlotService, never()).createSlot(any());
+    }
+
+    @Test
+    void confirmRejectsAStoredPreviewThatHasBecomePast() {
+        when(currentActorProvider.requireCurrentActor())
+                .thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        AiActionSuggestionEntity suggestion = pendingSuggestion();
+        suggestion.setPayloadJson("{\"labId\":10,\"startTime\":\"2024-06-14T08:00:00Z\","
+                + "\"endTime\":\"2024-06-14T10:00:00Z\",\"capacity\":20}");
+        when(repository.findByIdForUpdate(41L)).thenReturn(java.util.Optional.of(suggestion));
+
+        assertThrows(IllegalStateException.class, () -> service.confirm(41L));
+
+        verify(timeSlotService, never()).createSlot(any());
+        assertEquals(AiActionSuggestionStatus.PENDING, suggestion.getStatus());
+        assertEquals(AiActionConfirmationStatus.PENDING, suggestion.getConfirmationStatus());
     }
 
     private static AiActionSuggestionEntity pendingSuggestion() {

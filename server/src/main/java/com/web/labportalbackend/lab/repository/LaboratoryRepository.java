@@ -77,7 +77,7 @@ public interface LaboratoryRepository extends JpaRepository<Laboratory, Long> {
     long countWithoutManager();
 
     @Query("""
-            SELECT new com.web.labportalbackend.ai.context.AiLabContext$Laboratory(l.id, l.labName, l.status)
+            SELECT new com.web.labportalbackend.ai.context.AiLabContext$Laboratory(l.id, l.labName, l.status, l.capacity)
             FROM Laboratory l
             WHERE l.id = :labId AND l.active = true AND l.deleted = false
               AND EXISTS (SELECT u.id FROM User u WHERE u.id = :actorId AND u.active = true

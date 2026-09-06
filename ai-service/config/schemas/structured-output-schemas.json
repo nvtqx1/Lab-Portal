@@ -143,6 +143,23 @@
               "capacity": {"type": "integer", "minimum": 1},
               "requiresHumanReview": {"const": true}
             }
+          },
+          {
+            "type": "object",
+            "required": ["kind", "labRef", "missingFields", "question", "requiresHumanReview"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"const": "LAB_SHIFT_CREATE_CLARIFICATION"},
+              "labRef": {"type": "integer", "minimum": 1},
+              "missingFields": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"enum": ["DATE", "START_TIME", "END_TIME"]}
+              },
+              "question": {"type": "string", "minLength": 1, "maxLength": 500},
+              "requiresHumanReview": {"const": true}
+            }
           }
         ]
       }

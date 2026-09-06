@@ -91,6 +91,29 @@ class AiUnifiedChatServiceImplTest {
     }
 
     @Test
+    void pythonPlannerResponseWithAnIntegerResourceIdMatchesAuthorizedLongCandidate() throws Exception {
+        AiUnifiedChatRequest request = request("Cho tôi xem các ca Lab ngày mai");
+        when(candidateCatalog.candidates()).thenReturn(List.of(candidate));
+        ObjectNode pythonToolRequest = (ObjectNode) OBJECT_MAPPER.readTree("""
+                {"assistantKey":"LAB_ASSISTANT","schemaVersion":"v1","toolId":"lab.available.slots.read",
+                "arguments":{"resource":{"resourceType":"LABORATORY","resourceId":10}}}
+                """);
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(
+                AiToolPlanningDecision.TOOL_REQUEST, null, pythonToolRequest, 5, 2));
+        when(toolRegistry.get(AiToolId.LAB_AVAILABLE_SLOTS_READ)).thenReturn(
+                AiToolRegistryServiceImpl.defaultDefinitions().stream()
+                        .filter(definition -> definition.id() == AiToolId.LAB_AVAILABLE_SLOTS_READ)
+                        .findFirst().orElseThrow());
+        when(assistantGatewayService.chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-python")))
+                .thenReturn(new AiAssistantChatResponse("LAB_ASSISTANT", "Có hai ca trống.", 11, 4, List.of()));
+
+        var response = service.chat(request, "request-python");
+
+        assertEquals(AiUnifiedChatResponseType.ANSWER, response.type());
+        verify(assistantGatewayService).chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-python"));
+    }
+
+    @Test
     void modelCannotReturnARequestThatWasNotInServerCandidates() {
         when(candidateCatalog.candidates()).thenReturn(List.of(candidate));
         ObjectNode invented = candidate.toCanonicalToolRequest(OBJECT_MAPPER).deepCopy();
@@ -144,6 +167,34 @@ class AiUnifiedChatServiceImplTest {
         assertEquals(AiUnifiedChatResponseType.ACTION_PREVIEW, response.type());
         assertEquals(41L, response.actionPreview().suggestionId());
         verify(actionSuggestionService).createLabShiftPreview(10L, generated);
+    }
+
+    @Test
+    void incompleteManagerShiftRequestReturnsClarificationWithoutCreatingPreview() {
+        AiToolCandidate shiftCandidate = new AiToolCandidate(
+                AiAssistantKey.LAB_ASSISTANT, "v1", AiToolId.LAB_SHIFT_CREATE_DRAFT,
+                "Create a time slot in managed Lab 10",
+                new AiToolCandidate.ResourceReference(AiResourceType.LABORATORY, 10L), null);
+        when(candidateCatalog.candidates()).thenReturn(List.of(shiftCandidate));
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(
+                AiToolPlanningDecision.TOOL_REQUEST, null,
+                shiftCandidate.toCanonicalToolRequest(OBJECT_MAPPER), 5, 2));
+        when(toolRegistry.get(AiToolId.LAB_SHIFT_CREATE_DRAFT)).thenReturn(
+                AiToolRegistryServiceImpl.defaultDefinitions().stream()
+                        .filter(definition -> definition.id() == AiToolId.LAB_SHIFT_CREATE_DRAFT)
+                        .findFirst().orElseThrow());
+        when(assistantGatewayService.chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-5")))
+                .thenReturn(new AiAssistantChatResponse("LAB_ASSISTANT", """
+                        {"kind":"LAB_SHIFT_CREATE_CLARIFICATION","labRef":10,
+                        "missingFields":["START_TIME","END_TIME"],
+                        "question":"Bạn muốn ca bắt đầu và kết thúc lúc mấy giờ?","requiresHumanReview":true}
+                        """, 11, 4, List.of()));
+
+        var response = service.chat(request("Tạo ca ngày mai"), "request-5");
+
+        assertEquals(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED, response.type());
+        assertEquals("Bạn muốn ca bắt đầu và kết thúc lúc mấy giờ?", response.answer());
+        verifyNoInteractions(actionSuggestionService);
     }
 
     private static AiUnifiedChatRequest request(String input) {
