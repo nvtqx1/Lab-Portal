@@ -302,6 +302,20 @@ def test_lab_shift_create_returns_validated_non_executable_draft() -> None:
     }
 
 
+def test_unified_dialogue_uses_semantic_extraction_instead_of_regex_shortcut() -> None:
+    from test_shift_interpretation import patch
+    extracted = patch(mode="NEW", date="2026-09-14", startTime="09:00:00", endTime=None)
+    backend = StubGenerationBackend(json.dumps(extracted))
+    request = _request("lab.shift.create.draft", "LABORATORY", 10)
+    request["input"] = json.dumps({"dialogueVersion": 1,
+        "message": "Tạo ca ngày 14/09/2026 bắt đầu 9h", "pendingState": None,
+        "requestTimeUtc": "2026-09-07T00:00:00Z", "defaultTimezone": "Asia/Ho_Chi_Minh"})
+    response = _client(backend).post("/v1/assistants/chat", json=request)
+    assert response.status_code == 200
+    assert json.loads(response.json()["answer"]) == extracted
+    assert backend.calls == 1
+
+
 def test_lab_shift_create_can_request_missing_required_times_without_refusing() -> None:
     clarification = {
         "kind": "LAB_SHIFT_CREATE_CLARIFICATION",
@@ -514,6 +528,11 @@ def test_complete_lab_shift_request_stops_after_one_invalid_retry() -> None:
         (
             "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ. "
             "Thông tin bổ sung từ người dùng: 11h",
+            "2026-09-10",
+        ),
+        (
+            "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ. "
+            "Thông tin bổ sung từ người dùng: 11 giờ.",
             "2026-09-10",
         ),
         (

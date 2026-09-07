@@ -10,17 +10,22 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.web.labportalbackend.ai.dto.response.AiUnifiedChatResponse;
 import com.web.labportalbackend.ai.dto.response.AiActionResultResponse;
+import com.web.labportalbackend.ai.dto.response.AiConversationDetailResponse;
+import com.web.labportalbackend.ai.dto.response.AiConversationSummaryResponse;
 import com.web.labportalbackend.ai.enums.AiUnifiedChatResponseType;
 import com.web.labportalbackend.ai.service.AiUnifiedChatService;
 import com.web.labportalbackend.ai.service.AiActionSuggestionService;
+import com.web.labportalbackend.ai.service.AiConversationHistoryService;
 import com.web.labportalbackend.auth.security.JwtAuthenticationFilter;
 import java.util.List;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -53,6 +58,9 @@ class AiUnifiedChatControllerTest {
     @MockitoBean
     private AiActionSuggestionService actionSuggestionService;
 
+    @MockitoBean
+    private AiConversationHistoryService conversationHistoryService;
+
     @Test
     void authenticatedCallerUsesCommonEndpointWithoutClientSuppliedAuthority() throws Exception {
         when(unifiedChatService.chat(any(), eq("request-123"))).thenReturn(new AiUnifiedChatResponse(
@@ -65,7 +73,7 @@ class AiUnifiedChatControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer jwt-must-stay-in-spring")
                         .header("X-Request-Id", "request-123")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"input\":\"Cho tôi xem các ca Lab ngày mai\"}"))
+                        .content("{\"input\":\"Cho tôi xem các ca Lab ngày mai\",\"conversationId\":41}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.type").value("ANSWER"))
                 .andExpect(jsonPath("$.data.assistantKey").value("LAB_ASSISTANT"))
@@ -74,7 +82,8 @@ class AiUnifiedChatControllerTest {
 
         verify(unifiedChatService).chat(
                 org.mockito.ArgumentMatchers.argThat(request ->
-                        "Cho tôi xem các ca Lab ngày mai".equals(request.getInput())),
+                        "Cho tôi xem các ca Lab ngày mai".equals(request.getInput())
+                                && Long.valueOf(41L).equals(request.getConversationId())),
                 eq("request-123"));
     }
 
@@ -104,6 +113,28 @@ class AiUnifiedChatControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(unifiedChatService);
+    }
+
+    @Test
+    void authenticatedCallerCanListAndRestoreOwnedConversations() throws Exception {
+        when(conversationHistoryService.listCurrentUserConversations()).thenReturn(List.of(
+                new AiConversationSummaryResponse(41L, "Tạo ca AI Research Lab",
+                        Instant.parse("2026-09-06T08:00:00Z"))));
+        when(conversationHistoryService.getCurrentUserConversation(41L)).thenReturn(
+                new AiConversationDetailResponse(41L, "Tạo ca AI Research Lab", List.of()));
+
+        mockMvc.perform(get("/api/ai/conversations")
+                        .contextPath("/api")
+                        .with(user("manager").roles("LAB_MANAGER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(41))
+                .andExpect(jsonPath("$.data[0].title").value("Tạo ca AI Research Lab"));
+        mockMvc.perform(get("/api/ai/conversations/41")
+                        .contextPath("/api")
+                        .with(user("manager").roles("LAB_MANAGER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(41))
+                .andExpect(jsonPath("$.data.messages").isEmpty());
     }
 
     @Test

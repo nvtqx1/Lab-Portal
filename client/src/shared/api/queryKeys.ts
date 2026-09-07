@@ -27,6 +27,10 @@ export const queryKeys = {
     all: ['notifications'] as const,
     page: (page: number, size: number) => ['notifications', { page, size }] as const,
   },
+  assistant: {
+    conversations: ['assistantConversations'] as const,
+    conversation: (conversationId: number | null) => ['assistantConversation', conversationId] as const,
+  },
   face: {
     profiles: ['faceProfiles'] as const,
     checkinCandidates: ['faceCheckinCandidates'] as const,

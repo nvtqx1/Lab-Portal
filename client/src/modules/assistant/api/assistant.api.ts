@@ -7,6 +7,8 @@ import type {
   UnifiedChatRequest,
   UnifiedChatResponse,
   AssistantActionResult,
+  AssistantConversationDetail,
+  AssistantConversationSummary,
 } from '../types';
 
 export async function chatWithAssistant(
@@ -18,6 +20,18 @@ export async function chatWithAssistant(
     `/api/ai/assistants/${assistantKey}/chat`,
     request,
     { headers: { 'X-Request-Id': requestId } },
+  );
+  return response.data.data;
+}
+
+export async function getAssistantConversations(): Promise<AssistantConversationSummary[]> {
+  const response = await apiClient.get<Response<AssistantConversationSummary[]>>('/api/ai/conversations');
+  return response.data.data;
+}
+
+export async function getAssistantConversation(conversationId: number): Promise<AssistantConversationDetail> {
+  const response = await apiClient.get<Response<AssistantConversationDetail>>(
+    `/api/ai/conversations/${conversationId}`,
   );
   return response.data.data;
 }

@@ -3,5 +3,6 @@ package com.web.labportalbackend.ai.client;
 public enum AiToolPlanningDecision {
     TOOL_REQUEST,
     CLARIFICATION,
-    REFUSAL
+    REFUSAL,
+    CANCEL_PENDING
 }

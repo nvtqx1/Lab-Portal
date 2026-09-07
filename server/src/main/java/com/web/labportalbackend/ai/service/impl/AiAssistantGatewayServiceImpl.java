@@ -118,9 +118,19 @@ public class AiAssistantGatewayServiceImpl implements AiAssistantGatewayService 
                 .toList();
     }
 
-    private static String inferenceInput(AiAssistantChatRequest request, AiAuthorizedContext authorized) {
+    private String inferenceInput(AiAssistantChatRequest request, AiAuthorizedContext authorized) {
         if (request.getCapability() != AiCapability.LAB_SHIFT_CREATE_DRAFT) {
             return request.getInput();
+        }
+        try {
+            var input = objectMapper.readTree(request.getInput());
+            if (input instanceof ObjectNode object && object.path("dialogueVersion").asInt() == 1) {
+                object.put("requestTimeUtc", authorized.builtAt().toString());
+                object.put("defaultTimezone", "Asia/Ho_Chi_Minh");
+                return object.toString();
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            // Compatibility for the existing direct assistant endpoint's plain-text input.
         }
         return "Trusted Spring temporal context: requestTimeUtc=" + authorized.builtAt()
                 + ", defaultTimezone=Asia/Ho_Chi_Minh. Resolve relative dates such as today or tomorrow from "
