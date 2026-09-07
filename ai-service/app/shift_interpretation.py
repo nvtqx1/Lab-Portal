@@ -36,6 +36,11 @@ def dialogue_input(value: str) -> dict | None:
 
 
 def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) -> ChatResponse:
+    envelope = dialogue_input(user_input)
+    if envelope is not None:
+        envelope = dict(envelope)
+        envelope.pop("history", None)
+        user_input = json.dumps(envelope, ensure_ascii=False)
     messages = [
         {"role": "system", "content": (
             "Spring-authorized resources are the only allowed resources. Interpret a Lab shift creation conversation as a PATCH, using the provided pending state and "
@@ -48,6 +53,9 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             "withdraws a value or makes it ambiguous. Understand Vietnamese synonyms, misspellings and time "
             "notations such as 11h, 11g, 11:00, mười một giờ. Bind a short time answer to the field asked in "
             "the previous assistant question. Do not ask for confirmation or generate a question. "
+            "Use null or cleared fields in pendingState and the latest clarification in conversation context "
+            "to bind a short reply. "
+            "If pendingState is null, never restore values from a closed request. "
             "requestedLabName must preserve the Lab name mentioned in the latest message, even if it differs "
             "from the selected Lab; use null only when no Lab name is mentioned. Do not substitute a name. "
             "When pendingState.labConfirmed is false, a reply giving the Lab name is CONTINUE. "
@@ -71,6 +79,13 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             result = ShiftInterpretation.model_validate_json(generation.text)
             if result.labRef != lab_id:
                 raise ValueError("Resource mismatch")
+            if envelope is not None and result.mode == "CONTINUE":
+                if not envelope.get("pendingState"):
+                    raise ValueError("No active request to continue")
+                if not result.clearFields and all(getattr(result, field) is None for field in (
+                    "requestedLabName", "date", "startTime", "endTime", "capacity", "timeZone"
+                )):
+                    raise ValueError("Continuation did not extract any new information")
             return ChatResponse(
                 assistant_key=AssistantKey.LAB_ASSISTANT,
                 answer=result.model_dump_json(),
@@ -80,7 +95,12 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             )
         except (ValidationError, ValueError):
             if attempt == 0:
-                messages.append({"role": "user", "content": "Output failed schema/resource validation. Return one valid JSON patch using the original request."})
+                messages.append({"role": "user", "content": (
+                    "Output failed schema/resource/continuation validation. Re-read the latest message and "
+                    "pendingState and the latest clarification. Extract newly supplied information into the field being "
+                    "asked. CONTINUE requires an active pendingState and a meaningful patch. "
+                    "Do not invent values. Return one valid JSON patch using the original request."
+                )})
     return ChatResponse(
         assistant_key=AssistantKey.LAB_ASSISTANT,
         answer="I cannot safely interpret the supplied request. Please rephrase the latest information.",

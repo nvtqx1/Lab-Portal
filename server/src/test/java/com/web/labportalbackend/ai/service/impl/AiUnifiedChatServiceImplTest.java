@@ -76,6 +76,17 @@ class AiUnifiedChatServiceImplTest {
     }
 
     @Test
+    void conversationalAnswerDoesNotDispatchBusinessTools() {
+        when(candidateCatalog.candidates()).thenReturn(List.of(candidate));
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(
+                AiToolPlanningDecision.ANSWER, "Xin chào", null, 5, 2));
+        var response = service.chat(request("Chào bạn"), "greeting");
+        assertEquals(AiUnifiedChatResponseType.ANSWER, response.type());
+        assertEquals("Xin chào", response.answer());
+        verifyNoInteractions(assistantGatewayService, actionSuggestionService, toolRegistry);
+    }
+
+    @Test
     void canonicalPlannedCandidateIsReauthorizedByExistingGateway() {
         AiUnifiedChatRequest request = request("Cho tôi xem các ca Lab ngày mai");
         when(candidateCatalog.candidates()).thenReturn(List.of(candidate));
