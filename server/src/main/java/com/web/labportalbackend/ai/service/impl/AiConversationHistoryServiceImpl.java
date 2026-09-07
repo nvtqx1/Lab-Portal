@@ -76,12 +76,27 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
         envelope.put("dialogueVersion", 1);
         envelope.put("message", input);
         envelope.set("pendingState", objectMapper.valueToTree(state));
+        var missing = envelope.putArray("missingFields");
+        if (state != null) {
+            if (state.date() == null) missing.add("date");
+            if (state.startTime() == null) missing.add("startTime");
+            if (state.endTime() == null) missing.add("endTime");
+            if (state.capacity() == null || state.capacity() <= 0) missing.add("capacity");
+            if (!state.labConfirmed()) missing.add("requestedLabName");
+        }
+        if (missing.size() == 1) envelope.put("lastAskedField", missing.get(0).asText());
+        else envelope.putNull("lastAskedField");
         var history = envelope.putArray("history");
         // Include question + answer pairs in chronological order, with a bounded input budget.
         for (int index = recent.size() - 1; index >= 0; index--) {
             var message = recent.get(index);
             var response = message.getRole() == AiMessageRole.ASSISTANT
                     ? currentResponse(readResponse(message.getContent()), actions) : null;
+            // Closed actions form a boundary: neither their user input nor their
+            // generated text may reconstitute a cancelled/executed request.
+            if (response != null && response.type() == AiUnifiedChatResponseType.ACTION_RESULT) {
+                break;
+            }
             String content = response == null ? message.getContent() : response.answer();
             history.addObject().put("role", message.getRole().name())
                     .put("content", content.substring(0, Math.min(content.length(), 1500)));

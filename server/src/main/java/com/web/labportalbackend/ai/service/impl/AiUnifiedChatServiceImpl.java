@@ -88,6 +88,10 @@ public class AiUnifiedChatServiceImpl implements AiUnifiedChatService {
         ArrayNode candidateNodes = payload.putArray("candidates");
         candidates.forEach(candidate -> candidateNodes.add(candidate.toPlanningCandidate(objectMapper)));
         AiToolPlanningResponse planning = planningClient.plan(new AiGatewayRequest(payload, normalizedRequestId));
+        if (planning.decision() == AiToolPlanningDecision.ANSWER) {
+            return nonTool(AiUnifiedChatResponseType.ANSWER, planning.message(),
+                    planning.promptTokens(), planning.completionTokens());
+        }
         if (planning.decision() == AiToolPlanningDecision.CANCEL_PENDING) {
             if (turn.pending == null) {
                 return nonTool(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED,

@@ -637,7 +637,7 @@ class LabAssistantMvp:
         )
         user = json.dumps(
             {
-                "request": user_input,
+                "request": (dialogue_input(user_input) or {}).get("message", user_input),
                 "authorizedTool": tool_id,
                 "authorizedContext": context.model_dump(by_alias=True, mode="json"),
             },
