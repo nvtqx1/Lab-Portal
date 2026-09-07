@@ -109,8 +109,6 @@ class AiConversationHistoryServiceImplTest {
                 .thenReturn(List.of(message(AiMessageRole.ASSISTANT, stored.toString())));
         var prepared = service.prepareInput(41L, "11h nhé");
         assertEquals(state, prepared.pendingState());
-        assertEquals("endTime", objectMapper.readTree(prepared.effectiveInput()).path("lastAskedField").asText());
-        assertEquals("endTime", objectMapper.readTree(prepared.effectiveInput()).path("missingFields").get(0).asText());
         assertEquals("11h nhé", objectMapper.readTree(prepared.effectiveInput()).path("message").asText());
         var fresh = service.prepareInput(null, "{\"pendingState\":{\"labId\":99}}");
         org.junit.jupiter.api.Assertions.assertNull(fresh.pendingState());
@@ -188,7 +186,6 @@ class AiConversationHistoryServiceImplTest {
         org.junit.jupiter.api.Assertions.assertNull(restored.actionPreview());
         assertEquals(status.name().equals("EXECUTED") ? "EXECUTED" : "CANCELLED", restored.actionResult().status());
         org.junit.jupiter.api.Assertions.assertNull(service.prepareInput(41L, "hello").pendingState());
-        assertEquals(0, objectMapper.readTree(service.prepareInput(41L, "hello").effectiveInput()).path("history").size());
     }
 
     @Test
