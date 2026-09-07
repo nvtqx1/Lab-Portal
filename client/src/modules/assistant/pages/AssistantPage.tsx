@@ -1,11 +1,16 @@
 import axios from 'axios';
-import { Bot, BookOpen, CalendarClock, Check, Send, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
+import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
-import { useResolveAssistantAction, useUnifiedAssistantChat } from '../hooks';
-import type { UnifiedChatResponse } from '../types';
+import {
+  useAssistantConversation,
+  useAssistantConversations,
+  useResolveAssistantAction,
+  useUnifiedAssistantChat,
+} from '../hooks';
+import type { AssistantConversationDetail, UnifiedChatResponse } from '../types';
 
 interface ChatTurn {
   id: string;
@@ -19,8 +24,28 @@ function newTurnId() {
   return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`;
 }
 
-function shouldDiscardPendingClarification(input: string) {
-  return /^(?:hủy|huỷ|bỏ qua|thôi|không tạo)\b/i.test(input.trim());
+function restoredTurns(conversation: AssistantConversationDetail): ChatTurn[] {
+  const restored: ChatTurn[] = [];
+  conversation.messages.forEach((message) => {
+    if (message.role === 'USER') {
+      restored.push({ id: `message-${message.id}`, question: message.content });
+      return;
+    }
+    if (message.role === 'ASSISTANT' && restored.length > 0) {
+      restored[restored.length - 1].response = message.response ?? {
+        conversationId: conversation.id,
+        type: 'ANSWER',
+        assistantKey: null,
+        answer: message.content,
+        promptTokens: 0,
+        completionTokens: 0,
+        citations: [],
+        actionPreview: null,
+        actionResult: null,
+      };
+    }
+  });
+  return restored;
 }
 
 function getErrorMessage(error: unknown) {
@@ -102,11 +127,19 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
 export function AssistantPage() {
   const [input, setInput] = useState('');
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [validationError, setValidationError] = useState('');
   const conversationEndRef = useRef<HTMLDivElement>(null);
-  const pendingClarificationRef = useRef<string | null>(null);
   const chatMutation = useUnifiedAssistantChat();
   const actionMutation = useResolveAssistantAction();
+  const conversations = useAssistantConversations();
+  const conversation = useAssistantConversation(conversationId);
+
+  useEffect(() => {
+    if (conversation.data) {
+      setTurns(restoredTurns(conversation.data));
+    }
+  }, [conversation.data]);
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -115,20 +148,8 @@ export function AssistantPage() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const question = input.trim();
-    if (!question || chatMutation.isPending) {
+    if (!question || chatMutation.isPending || actionMutation.isPending) {
       if (!question) setValidationError('Vui lòng nhập câu hỏi cho trợ lý.');
-      return;
-    }
-
-    const pendingClarification = shouldDiscardPendingClarification(question)
-      ? null
-      : pendingClarificationRef.current;
-    const requestInput = pendingClarification
-      ? `${pendingClarification}\nThông tin bổ sung từ người dùng: ${question}`
-      : question;
-    if (requestInput.length > 32768) {
-      setValidationError('Nội dung hội thoại đang chờ quá dài. Vui lòng nhập lại yêu cầu đầy đủ.');
-      pendingClarificationRef.current = null;
       return;
     }
 
@@ -136,11 +157,9 @@ export function AssistantPage() {
     setInput('');
     setValidationError('');
     setTurns((current) => [...current, { id: turnId, question }]);
-    chatMutation.mutate({ input: requestInput }, {
+    chatMutation.mutate({ input: question, ...(conversationId === null ? {} : { conversationId }) }, {
       onSuccess: (response) => {
-        pendingClarificationRef.current = response.type === 'CLARIFICATION_REQUIRED'
-          ? requestInput
-          : null;
+        setConversationId(response.conversationId);
         setTurns((current) => current.map((turn) => (
           turn.id === turnId ? { ...turn, response } : turn
         )));
@@ -151,7 +170,23 @@ export function AssistantPage() {
     });
   };
 
+  const startNewConversation = () => {
+    if (chatMutation.isPending || actionMutation.isPending) return;
+    setConversationId(null);
+    setTurns([]);
+    setInput('');
+    setValidationError('');
+  };
+
+  const openConversation = (selectedConversationId: number) => {
+    if (chatMutation.isPending || actionMutation.isPending) return;
+    if (selectedConversationId === conversationId) return;
+    setTurns([]);
+    setConversationId(selectedConversationId);
+  };
+
   const handleResolveAction = (turnId: string, suggestionId: number, decision: 'confirm' | 'cancel') => {
+    if (chatMutation.isPending || actionMutation.isPending) return;
     actionMutation.mutate({ suggestionId, decision }, {
       onSuccess: (actionResult) => setTurns((current) => current.map((turn) => (
         turn.id === turnId && turn.response
@@ -184,13 +219,41 @@ export function AssistantPage() {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">Chỉ cần nhập câu hỏi. Spring tự xác định nghiệp vụ, dữ liệu và quyền được phép trước khi gọi model.</p>
       </header>
 
-      <div className="flex min-h-[680px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 sm:px-6">
-          <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
-          Không cần chọn chủ đề hoặc tài nguyên; backend kiểm tra lại quyền cho từng yêu cầu.
-        </div>
+      <div className="grid min-h-[680px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="border-b border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 md:border-b-0 md:border-r">
+          <Button disabled={chatMutation.isPending || actionMutation.isPending} className="w-full" onClick={startNewConversation} type="button" variant="outline">
+            <Plus aria-hidden="true" className="h-4 w-4" /> Cuộc trò chuyện mới
+          </Button>
+          <div className="mt-3 max-h-40 space-y-1 overflow-y-auto md:max-h-[600px]">
+            {conversations.data?.map((item) => (
+              <button
+                className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+                  conversationId === item.id
+                    ? 'bg-slate-200 text-slate-950 dark:bg-slate-800 dark:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900'
+                }`}
+                key={item.id}
+                disabled={chatMutation.isPending || actionMutation.isPending}
+                onClick={() => openConversation(item.id)}
+                type="button"
+              >
+                <MessageSquare aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="line-clamp-2">{item.title}</span>
+              </button>
+            ))}
+            {conversations.isLoading ? (
+              <p className="px-3 py-2 text-xs text-slate-500">Đang tải lịch sử…</p>
+            ) : null}
+          </div>
+        </aside>
 
-        <div aria-live="polite" className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+        <div className="flex min-w-0 flex-col">
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 sm:px-6">
+            <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+            Không cần chọn chủ đề hoặc tài nguyên; backend kiểm tra lại quyền cho từng yêu cầu.
+          </div>
+
+          <div aria-live="polite" className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
           {turns.length === 0 ? (
             <div className="flex min-h-96 flex-col items-center justify-center text-center">
               <Sparkles aria-hidden="true" className="h-9 w-9 text-slate-400" />
@@ -207,7 +270,7 @@ export function AssistantPage() {
                 <div className="mt-0.5 h-fit rounded-full bg-white p-2 shadow-sm dark:bg-slate-900"><Bot aria-hidden="true" className="h-4 w-4" /></div>
                 {turn.response ? <AssistantAnswer
                   actionError={turn.actionError}
-                  actionPending={actionMutation.isPending}
+                  actionPending={actionMutation.isPending || chatMutation.isPending}
                   response={turn.response}
                   onResolve={(suggestionId, decision) => handleResolveAction(turn.id, suggestionId, decision)}
                 /> : turn.error ? (
@@ -219,14 +282,14 @@ export function AssistantPage() {
             </article>
           ))}
           <div ref={conversationEndRef} />
-        </div>
+          </div>
 
-        <form className="border-t border-slate-200 p-4 dark:border-slate-800 sm:p-5" onSubmit={handleSubmit}>
+          <form className="border-t border-slate-200 p-4 dark:border-slate-800 sm:p-5" onSubmit={handleSubmit}>
           <label className="sr-only" htmlFor="assistant-input">Câu hỏi</label>
           <textarea
             id="assistant-input"
             className="min-h-24 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-3 text-base text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            disabled={chatMutation.isPending}
+            disabled={chatMutation.isPending || actionMutation.isPending}
             maxLength={32768}
             placeholder="Nhập câu hỏi… (Enter để gửi, Shift + Enter để xuống dòng)"
             value={input}
@@ -243,7 +306,8 @@ export function AssistantPage() {
             <p className="flex items-start gap-2 text-xs leading-5 text-slate-500 dark:text-slate-400"><ShieldCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /> AI không nhận quyền truy cập DB trực tiếp và không thể tự mở rộng phạm vi dữ liệu.</p>
             <Button loading={chatMutation.isPending} loadingText="Đang trả lời…" type="submit"><Send aria-hidden="true" className="h-4 w-4" /> Gửi</Button>
           </div>
-        </form>
+          </form>
+        </div>
       </div>
     </section>
   );

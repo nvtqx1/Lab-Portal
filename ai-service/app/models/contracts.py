@@ -68,7 +68,7 @@ class PlannedToolRequest(ContractModel):
 
 
 class ToolPlanningResponse(ContractModel):
-    decision: Literal["TOOL_REQUEST", "CLARIFICATION", "REFUSAL"]
+    decision: Literal["TOOL_REQUEST", "CLARIFICATION", "REFUSAL", "CANCEL_PENDING"]
     message: str | None
     tool_request: PlannedToolRequest | None
     prompt_tokens: int = Field(ge=0)

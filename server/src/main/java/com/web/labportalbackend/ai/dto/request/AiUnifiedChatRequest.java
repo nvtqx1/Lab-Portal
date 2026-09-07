@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -20,6 +21,11 @@ public class AiUnifiedChatRequest {
     @NotBlank(message = "Chat input is required")
     @Size(max = 32768, message = "Chat input must not exceed 32768 characters")
     private String input;
+
+    @Schema(description = "Existing conversation owned by the authenticated user; omit to start a new conversation",
+            nullable = true)
+    @Positive(message = "Conversation ID must be positive")
+    private Long conversationId;
 
     @JsonIgnore
     @Schema(hidden = true)

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,6 +27,7 @@ import com.web.labportalbackend.ai.enums.AiToolId;
 import com.web.labportalbackend.ai.enums.AiUnifiedChatResponseType;
 import com.web.labportalbackend.ai.service.AiAssistantGatewayService;
 import com.web.labportalbackend.ai.service.AiActionSuggestionService;
+import com.web.labportalbackend.ai.service.AiConversationHistoryService;
 import com.web.labportalbackend.ai.service.AiToolCandidate;
 import com.web.labportalbackend.ai.service.AiToolCandidateCatalog;
 import com.web.labportalbackend.ai.service.AiToolRegistry;
@@ -48,6 +50,8 @@ class AiUnifiedChatServiceImplTest {
     @Mock private AiToolRegistry toolRegistry;
     @Mock private AiAssistantGatewayService assistantGatewayService;
     @Mock private AiActionSuggestionService actionSuggestionService;
+    @Mock private AiConversationHistoryService conversationHistoryService;
+    @Mock private AiShiftDialogueService shiftDialogueService;
 
     private AiUnifiedChatServiceImpl service;
     private AiToolCandidate candidate;
@@ -56,7 +60,12 @@ class AiUnifiedChatServiceImplTest {
     void setUp() {
         service = new AiUnifiedChatServiceImpl(
                 candidateCatalog, planningClient, toolRegistry, assistantGatewayService,
-                actionSuggestionService, OBJECT_MAPPER);
+                actionSuggestionService, conversationHistoryService, OBJECT_MAPPER, shiftDialogueService);
+        lenient().when(conversationHistoryService.prepareInput(any(), any()))
+                .thenAnswer(invocation -> new AiConversationHistoryService.PreparedInput(
+                        invocation.getArgument(0), invocation.getArgument(1)));
+        lenient().when(conversationHistoryService.saveTurn(any(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
         candidate = new AiToolCandidate(
                 AiAssistantKey.LAB_ASSISTANT,
                 "v1",
@@ -199,7 +208,7 @@ class AiUnifiedChatServiceImplTest {
     }
 
     @Test
-    void invalidShiftDraftBecomesSafeRefusalInsteadOfPreviewOrServerError() {
+    void invalidShiftDraftRequestsRephrasingInsteadOfPreviewOrServerError() {
         AiToolCandidate shiftCandidate = new AiToolCandidate(
                 AiAssistantKey.LAB_ASSISTANT, "v1", AiToolId.LAB_SHIFT_CREATE_DRAFT,
                 "Create a time slot in managed Lab 10",
@@ -220,7 +229,7 @@ class AiUnifiedChatServiceImplTest {
         var response = service.chat(request(
                 "Tạo ca tại AI Research Lab vào ngày 10/09/2026, bắt đầu lúc 9 giờ."), "request-invalid");
 
-        assertEquals(AiUnifiedChatResponseType.REFUSED, response.type());
+        assertEquals(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED, response.type());
         verifyNoInteractions(actionSuggestionService);
     }
 
@@ -256,5 +265,63 @@ class AiUnifiedChatServiceImplTest {
         AiUnifiedChatRequest request = new AiUnifiedChatRequest();
         request.setInput(input);
         return request;
+    }
+
+    @Test
+    void clarificationThenShortAnswerThenCorrectionRetainsFieldsAndInvalidatesOldPreview() {
+        var labs = org.mockito.Mockito.mock(com.web.labportalbackend.lab.repository.LaboratoryRepository.class);
+        var actors = org.mockito.Mockito.mock(com.web.labportalbackend.ai.service.AiCurrentActorProvider.class);
+        when(actors.requireCurrentActor()).thenReturn(new com.web.labportalbackend.ai.service.AiCurrentActor(
+                7L, com.web.labportalbackend.ai.enums.AiAssistantSystemRole.LAB_MANAGER));
+        when(labs.existsAiContextManagedLab(7L, 10L, "LAB_MANAGER")).thenReturn(true);
+        when(labs.findAiContextLaboratory(7L, 10L, "LAB_MANAGER")).thenReturn(java.util.Optional.of(
+                new com.web.labportalbackend.ai.context.AiLabContext.Laboratory(10L, "AI Research Lab", null, 30)));
+        var realDialogue = new AiShiftDialogueService(OBJECT_MAPPER, labs, actors,
+                java.time.Clock.fixed(Instant.parse("2026-09-07T00:00:00Z"), java.time.ZoneOffset.UTC));
+        service = new AiUnifiedChatServiceImpl(candidateCatalog, planningClient, toolRegistry, assistantGatewayService,
+                actionSuggestionService, conversationHistoryService, OBJECT_MAPPER, realDialogue);
+        var state = new java.util.concurrent.atomic.AtomicReference<com.web.labportalbackend.ai.service.AiShiftDialogueState>();
+        when(conversationHistoryService.prepareInput(any(), any())).thenAnswer(invocation ->
+                new AiConversationHistoryService.PreparedInput(41L, invocation.getArgument(1), state.get()));
+        when(conversationHistoryService.saveTurn(any(), any(), any(), any())).thenAnswer(invocation -> {
+            state.set(invocation.getArgument(3)); return invocation.getArgument(2);
+        });
+        var shift = new AiToolCandidate(AiAssistantKey.LAB_ASSISTANT, "v1", AiToolId.LAB_SHIFT_CREATE_DRAFT,
+                "Create", new AiToolCandidate.ResourceReference(AiResourceType.LABORATORY, 10L), null);
+        when(candidateCatalog.candidates()).thenReturn(List.of(shift));
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(AiToolPlanningDecision.TOOL_REQUEST,
+                null, shift.toCanonicalToolRequest(OBJECT_MAPPER), 1, 1));
+        when(toolRegistry.get(AiToolId.LAB_SHIFT_CREATE_DRAFT)).thenReturn(AiToolRegistryServiceImpl.defaultDefinitions()
+                .stream().filter(d -> d.id() == AiToolId.LAB_SHIFT_CREATE_DRAFT).findFirst().orElseThrow());
+        when(assistantGatewayService.chat(any(), any(), any())).thenReturn(
+                interpreted("NEW", "2026-09-14", "09:00:00", null),
+                interpreted("CONTINUE", null, null, "11:00:00"),
+                interpreted("CONTINUE", null, null, "12:00:00"));
+        when(actionSuggestionService.createLabShiftPreview(eq(10L), any())).thenReturn(
+                new AiActionPreviewResponse(55L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L,
+                        Instant.parse("2026-09-14T02:00:00Z"), Instant.parse("2026-09-14T04:00:00Z"), 30),
+                new AiActionPreviewResponse(56L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L,
+                        Instant.parse("2026-09-14T02:00:00Z"), Instant.parse("2026-09-14T05:00:00Z"), 30));
+        assertEquals(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED, service.chat(request("Tạo ca 14/9 từ 9h"), "a").type());
+        assertEquals(AiUnifiedChatResponseType.ACTION_PREVIEW, service.chat(request("11h nhé"), "b").type());
+        assertEquals(55L, state.get().suggestionId());
+        assertEquals(AiUnifiedChatResponseType.ACTION_PREVIEW, service.chat(request("đổi giờ cuối thành 12h"), "c").type());
+        assertEquals("09:00:00", state.get().startTime());
+        assertEquals("12:00:00", state.get().endTime());
+        assertEquals(56L, state.get().suggestionId());
+        verify(actionSuggestionService).cancel(55L);
+        when(planningClient.plan(any())).thenReturn(new AiToolPlanningResponse(AiToolPlanningDecision.CANCEL_PENDING,
+                "cancel", null, 1, 1));
+        assertEquals(AiUnifiedChatResponseType.ANSWER, service.chat(request("thôi bỏ ca đó"), "d").type());
+        org.junit.jupiter.api.Assertions.assertNull(state.get());
+        verify(actionSuggestionService).cancel(56L);
+    }
+
+    private static AiAssistantChatResponse interpreted(String mode, String date, String start, String end) {
+        var patch = OBJECT_MAPPER.createObjectNode();
+        patch.put("kind", "LAB_SHIFT_CREATE_INTERPRETATION").put("labRef", 10).put("requestedLabName", "AI Research Lab")
+                .put("mode", mode).put("date", date).put("startTime", start).put("endTime", end)
+                .putNull("capacity").putNull("timeZone").put("requiresHumanReview", true).putArray("clearFields");
+        return new AiAssistantChatResponse("LAB_ASSISTANT", patch.toString(), 1, 1, List.of());
     }
 }

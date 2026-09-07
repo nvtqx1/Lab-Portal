@@ -52,9 +52,11 @@ export type UnifiedChatResponseType =
 
 export interface UnifiedChatRequest {
   input: string;
+  conversationId?: number;
 }
 
 export interface UnifiedChatResponse {
+  conversationId: number;
   type: UnifiedChatResponseType;
   assistantKey: AssistantKey | null;
   answer: string;
@@ -63,6 +65,26 @@ export interface UnifiedChatResponse {
   citations: AssistantCitation[];
   actionPreview: AssistantActionPreview | null;
   actionResult: AssistantActionResult | null;
+}
+
+export interface AssistantConversationSummary {
+  id: number;
+  title: string;
+  updatedAt: string;
+}
+
+export interface AssistantConversationMessage {
+  id: number;
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  content: string;
+  response: UnifiedChatResponse | null;
+  createdAt: string;
+}
+
+export interface AssistantConversationDetail {
+  id: number;
+  title: string;
+  messages: AssistantConversationMessage[];
 }
 
 export interface AssistantActionPreview {

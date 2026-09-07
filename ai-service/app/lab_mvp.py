@@ -15,6 +15,7 @@ from app.profiles import AssistantProfile, ProfileLoader
 from app.rag_context import AuthorizedRetrieval
 from app.research_mvp import GenerationBackend
 from app.runtime import RuntimeGeneration
+from app.shift_interpretation import dialogue_input, interpret_shift
 
 
 SAFE_REFUSAL = "I cannot provide that response from the authorized context available."
@@ -172,6 +173,8 @@ class LabAssistantMvp:
         if selected is None:
             return self._safe_refusal()
         tool_id, context, resources = selected
+        if tool_id == _SHIFT_CREATE_DRAFT_TOOL and dialogue_input(payload.input) is not None:
+            return interpret_shift(self._backend, payload.input, context.context.laboratory.id)
         if tool_id == _SHIFT_CREATE_DRAFT_TOOL:
             missing_fields = self._missing_shift_fields(payload.input)
             if missing_fields:
