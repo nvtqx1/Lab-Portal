@@ -20,6 +20,7 @@ from app.shift_interpretation import dialogue_input
 
 SAFE_REFUSAL = "I cannot safely determine an authorized action for that request."
 WRITE_TOOL_UNAVAILABLE = "Bạn không có công cụ được cấp quyền để tạo ca Lab cho yêu cầu này."
+SHIFT_UPDATE_UNAVAILABLE = "Hiện chưa hỗ trợ chỉnh sửa ca đã tạo. Vui lòng hủy ca cũ và tạo ca mới."
 UNMANAGED_LAB_REFUSAL = "Bạn chỉ có thể tạo ca cho Lab mình đang quản lý."
 SHIFT_CREATE_TOOL = "lab.shift.create.draft"
 AVAILABLE_SLOTS_TOOL = "lab.available.slots.read"
@@ -37,6 +38,18 @@ _REQUESTED_LAB_PATTERN = re.compile(
 _CANDIDATE_LAB_PATTERNS = (
     re.compile(r"\bmanaged\s+lab\s+(?P<label>.+)$"),
     re.compile(r"\btai\s+(?P<label>.+)$"),
+    re.compile(r"\bin\s+(?P<label>.+)$"),
+)
+_PENDING_SHIFT_READ_PATTERN = re.compile(r"\b(?:xem|liet ke|thong ke|ca trong|ca dang quan ly)\b")
+_PENDING_SHIFT_CANCEL_PATTERN = re.compile(r"\b(?:huy|cancel|dung tao|khong tao)\b")
+_PENDING_SHIFT_CHAT_PATTERN = re.compile(r"^(?:xin chao|chao|hello|hi|ban co the|ho tro)\b")
+_PENDING_SHIFT_FIELD_PATTERN = re.compile(
+    r"(?:mui gio|timezone|utc|suc chua|nguoi|\bngay\b|hom nay|ngay mai|"
+    r"\b\d{1,2}\s*(?:h|g|gio)\b|\b\d{1,2}:\d{2}\b)"
+)
+_SHIFT_UPDATE_PATTERN = re.compile(
+    r"\b(?:sua|doi|chinh\s+sua|cap\s+nhat|thay\s+doi)\b.*\bca\b|"
+    r"\bca\b.*\b(?:sua|doi|chinh\s+sua|cap\s+nhat|thay\s+doi)\b"
 )
 
 
@@ -103,6 +116,33 @@ class ToolPlanner:
         except (ValidationError, ValueError):
             decision = None
         if decision is not None:
+            if self._is_existing_shift_update(latest_message, conversation):
+                return ToolPlanningResponse(
+                    decision="REFUSAL", message=SHIFT_UPDATE_UNAVAILABLE, tool_request=None,
+                    prompt_tokens=generation.prompt_tokens, completion_tokens=generation.completion_tokens,
+                )
+            if decision.intent == "CREATE_SHIFT" or self._is_shift_create_intent(latest_message):
+                requested_lab = self._requested_lab_label(latest_message)
+                create_candidates = [
+                    candidate for candidate in payload.candidates if candidate.tool_id == SHIFT_CREATE_TOOL
+                ]
+                if requested_lab is not None and not any(
+                    self._candidate_lab_label(candidate) == requested_lab for candidate in create_candidates
+                ):
+                    return ToolPlanningResponse(
+                        decision="REFUSAL", message=UNMANAGED_LAB_REFUSAL, tool_request=None,
+                        prompt_tokens=generation.prompt_tokens, completion_tokens=generation.completion_tokens,
+                    )
+            pending_create = self._pending_shift_create_candidate(
+                conversation, latest_message, decision, payload.candidates
+            )
+            if pending_create is not None:
+                return ToolPlanningResponse(
+                    decision="TOOL_REQUEST", message=None,
+                    tool_request=self._canonical_request(pending_create),
+                    prompt_tokens=generation.prompt_tokens,
+                    completion_tokens=generation.completion_tokens,
+                )
             if decision.decision == "ANSWER" and decision.intent == "CHAT" and decision.message and decision.candidateIndex is None:
                 return ToolPlanningResponse(decision="ANSWER", message=decision.message, tool_request=None,
                     prompt_tokens=generation.prompt_tokens, completion_tokens=generation.completion_tokens)
@@ -124,6 +164,36 @@ class ToolPlanner:
                     completion_tokens=generation.completion_tokens)
         return ToolPlanningResponse(decision="CLARIFICATION", message="Tôi chưa hiểu rõ thông tin mới. Bạn vui lòng diễn đạt lại.",
             tool_request=None, prompt_tokens=generation.prompt_tokens, completion_tokens=generation.completion_tokens)
+
+    @classmethod
+    def _pending_shift_create_candidate(
+        cls,
+        conversation: dict,
+        latest_message: str,
+        decision: _SemanticDecision,
+        candidates: tuple[ToolCandidate, ...],
+    ) -> ToolCandidate | None:
+        pending = conversation.get("pendingState")
+        if (
+            not isinstance(pending, dict)
+            or not pending.get("labId")
+            or decision.decision != "TOOL_REQUEST"
+            or type(decision.candidateIndex) is not int
+            or not 0 <= decision.candidateIndex < len(candidates)
+            or candidates[decision.candidateIndex].tool_id != AVAILABLE_SLOTS_TOOL
+        ):
+            return None
+        normalized = cls._normalized(latest_message).strip()
+        if (
+            not normalized
+            or _PENDING_SHIFT_READ_PATTERN.search(normalized)
+            or _PENDING_SHIFT_CANCEL_PATTERN.search(normalized)
+            or _PENDING_SHIFT_CHAT_PATTERN.search(normalized)
+            or not _PENDING_SHIFT_FIELD_PATTERN.search(normalized)
+        ):
+            return None
+        create_candidates = [candidate for candidate in candidates if candidate.tool_id == SHIFT_CREATE_TOOL]
+        return create_candidates[0] if len(create_candidates) == 1 else None
 
     def _legacy_plan(self, payload: ToolPlanningRequest) -> ToolPlanningResponse:
         shift_create_intent = self._is_shift_create_intent(payload.input)
@@ -265,6 +335,12 @@ class ToolPlanner:
         normalized = ToolPlanner._normalized(user_input)
         return bool(_SHIFT_CREATE_PATTERN.search(normalized)) and not bool(
             _NEGATED_SHIFT_CREATE_PATTERN.search(normalized)
+        )
+
+    @staticmethod
+    def _is_existing_shift_update(user_input: str, conversation: dict) -> bool:
+        return conversation.get("pendingState") is None and bool(
+            _SHIFT_UPDATE_PATTERN.search(ToolPlanner._normalized(user_input))
         )
 
     @staticmethod

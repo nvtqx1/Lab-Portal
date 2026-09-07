@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -120,6 +121,24 @@ class AiActionSuggestionServiceImplTest {
         assertEquals(AiActionConfirmationStatus.CONFIRMED, suggestion.getConfirmationStatus());
         assertEquals(AiActionExecutionStatus.EXECUTED, suggestion.getExecutionStatus());
         assertEquals(7L, suggestion.getExecutedById());
+        verify(timeSlotService).createSlot(any());
+    }
+
+    @Test
+    void confirmMarksPreviewUnavailableWhenSlotCreationIsRejected() {
+        when(currentActorProvider.requireCurrentActor())
+                .thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        AiActionSuggestionEntity suggestion = pendingSuggestion();
+        when(repository.findByIdForUpdate(41L)).thenReturn(java.util.Optional.of(suggestion));
+        doThrow(new IllegalStateException("Time slot overlaps with an existing slot in this lab"))
+                .when(timeSlotService).createSlot(any());
+
+        var result = service.confirm(41L);
+
+        assertEquals("UNAVAILABLE", result.status());
+        assertEquals(AiActionSuggestionStatus.REJECTED, suggestion.getStatus());
+        assertEquals(AiActionConfirmationStatus.REJECTED, suggestion.getConfirmationStatus());
+        assertEquals(AiActionExecutionStatus.NOT_REQUESTED, suggestion.getExecutionStatus());
         verify(timeSlotService).createSlot(any());
     }
 

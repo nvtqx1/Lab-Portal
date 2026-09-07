@@ -100,6 +100,9 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
           {actionError ? <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{actionError}</p> : null}
         </div>
       ) : null}
+      {!response.actionPreview && actionError ? (
+        <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{actionError}</p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Prompt: {response.promptTokens} tokens</span>
         <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Completion: {response.completionTokens} tokens</span>
@@ -227,9 +230,21 @@ export function AssistantPage() {
             }
           : turn
       ))),
-      onError: (error) => setTurns((current) => current.map((turn) => (
-        turn.id === turnId ? { ...turn, actionError: getErrorMessage(error) } : turn
-      ))),
+      onError: (error) => setTurns((current) => current.map((turn) => {
+        if (turn.id !== turnId) return turn;
+        const message = getErrorMessage(error);
+        return {
+          ...turn,
+          actionError: message,
+          response: turn.response ? {
+            ...turn.response,
+            type: 'REFUSED',
+            answer: 'Bản xem trước không còn hợp lệ và đã được đóng. Vui lòng tạo lại với thời gian khác.',
+            actionPreview: null,
+            actionResult: null,
+          } : turn.response,
+        };
+      })),
     });
   };
 

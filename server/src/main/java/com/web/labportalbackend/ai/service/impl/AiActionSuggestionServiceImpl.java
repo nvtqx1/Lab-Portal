@@ -127,13 +127,22 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
 
         suggestion.setConfirmationStatus(AiActionConfirmationStatus.CONFIRMED);
         suggestion.setExecutionStatus(AiActionExecutionStatus.PENDING);
-        TimeSlotResponse created = timeSlotService.createSlot(CreateTimeSlotRequest.builder()
-                .labId(payload.labId())
-                .startTime(payload.startTime())
-                .endTime(payload.endTime())
-                .capacity(payload.capacity())
-                .status(TimeSlotStatus.AVAILABLE)
-                .build());
+        TimeSlotResponse created;
+        try {
+            created = timeSlotService.createSlot(CreateTimeSlotRequest.builder()
+                    .labId(payload.labId())
+                    .startTime(payload.startTime())
+                    .endTime(payload.endTime())
+                    .capacity(payload.capacity())
+                    .status(TimeSlotStatus.AVAILABLE)
+                    .build());
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            suggestion.setStatus(AiActionSuggestionStatus.REJECTED);
+            suggestion.setConfirmationStatus(AiActionConfirmationStatus.REJECTED);
+            suggestion.setExecutionStatus(AiActionExecutionStatus.NOT_REQUESTED);
+            suggestion.setRejectedReason(exception.getMessage());
+            return new AiActionResultResponse(suggestion.getId(), CREATE_LAB_SHIFT, "UNAVAILABLE", null);
+        }
         if (created == null || created.getId() == null) {
             throw new IllegalStateException("Time slot creation did not return an identifier");
         }
