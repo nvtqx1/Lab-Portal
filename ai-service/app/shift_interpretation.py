@@ -53,7 +53,8 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             "withdraws a value or makes it ambiguous. Understand Vietnamese synonyms, misspellings and time "
             "notations such as 11h, 11g, 11:00, mười một giờ. Bind a short time answer to the field asked in "
             "the previous assistant question. Do not ask for confirmation or generate a question. "
-            "Use missingFields and lastAskedField from the structured conversation to bind a short reply. "
+            "Use null or cleared fields in pendingState and the latest clarification in conversation context "
+            "to bind a short reply. "
             "If pendingState is null, never restore values from a closed request. "
             "requestedLabName must preserve the Lab name mentioned in the latest message, even if it differs "
             "from the selected Lab; use null only when no Lab name is mentioned. Do not substitute a name. "
@@ -96,7 +97,7 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             if attempt == 0:
                 messages.append({"role": "user", "content": (
                     "Output failed schema/resource/continuation validation. Re-read the latest message and "
-                    "missingFields/lastAskedField. Extract newly supplied information into the field being "
+                    "pendingState and the latest clarification. Extract newly supplied information into the field being "
                     "asked. CONTINUE requires an active pendingState and a meaningful patch. "
                     "Do not invent values. Return one valid JSON patch using the original request."
                 )})

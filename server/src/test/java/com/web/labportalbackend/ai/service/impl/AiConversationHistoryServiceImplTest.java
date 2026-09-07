@@ -71,6 +71,67 @@ class AiConversationHistoryServiceImplTest {
     }
 
     @Test
+    void regularAnswerRemainsAvailableForTheNextTurn() throws Exception {
+        when(actorProvider.requireCurrentActor()).thenReturn(
+                new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
+                .thenReturn(Optional.of(conversation(41L, 7L)));
+        var answer = new AiUnifiedChatResponse(
+                41L, AiUnifiedChatResponseType.ANSWER, "LAB_ASSISTANT",
+                "I can help with managed Lab shifts.", 1, 1, List.of(), null, null);
+        when(messageRepository.findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(
+                eq(41L), any())).thenReturn(List.of(
+                message(AiMessageRole.ASSISTANT, objectMapper.writeValueAsString(answer)),
+                message(AiMessageRole.USER, "What can you help me with?")));
+
+        var envelope = objectMapper.readTree(service.prepareInput(41L, "Show my shifts.").effectiveInput());
+
+        assertEquals(2, envelope.path("history").size());
+        assertEquals("I can help with managed Lab shifts.",
+                envelope.path("history").get(1).path("content").asText());
+    }
+
+    @Test
+    void closedActionDropsOlderHistoryButKeepsNewerMessages() throws Exception {
+        when(actorProvider.requireCurrentActor()).thenReturn(
+                new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
+                .thenReturn(Optional.of(conversation(41L, 7L)));
+        var actionResult = new AiUnifiedChatResponse(
+                41L, AiUnifiedChatResponseType.ACTION_RESULT, "LAB_ASSISTANT",
+                "Created Lab shift #17.", 1, 1, List.of(), null, null);
+        when(messageRepository.findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(
+                eq(41L), any())).thenReturn(List.of(
+                message(AiMessageRole.USER, "What can I do next?"),
+                message(AiMessageRole.ASSISTANT, objectMapper.writeValueAsString(actionResult)),
+                message(AiMessageRole.USER, "Create a shift.")));
+
+        var envelope = objectMapper.readTree(service.prepareInput(41L, "Show my shifts.").effectiveInput());
+
+        assertEquals(1, envelope.path("history").size());
+        assertEquals("What can I do next?", envelope.path("history").get(0).path("content").asText());
+    }
+
+    @Test
+    void historyEnvelopeDoesNotDeriveShiftMissingFields() throws Exception {
+        when(actorProvider.requireCurrentActor()).thenReturn(
+                new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
+                .thenReturn(Optional.of(conversation(41L, 7L)));
+        var state = new com.web.labportalbackend.ai.service.AiShiftDialogueState(
+                10L, "2026-09-14", "09:00:00", null, null, null);
+        var stored = objectMapper.createObjectNode();
+        stored.set("_pendingShift", objectMapper.valueToTree(state));
+        when(messageRepository.findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(
+                eq(41L), any())).thenReturn(List.of(message(AiMessageRole.ASSISTANT, stored.toString())));
+
+        var envelope = objectMapper.readTree(service.prepareInput(41L, "11h").effectiveInput());
+
+        org.junit.jupiter.api.Assertions.assertFalse(envelope.has("missingFields"));
+        org.junit.jupiter.api.Assertions.assertFalse(envelope.has("lastAskedField"));
+    }
+
+    @Test
     void standaloneShiftRequestIsPassedToSemanticInterpreterWithoutRegexRouting() throws Exception {
         AiConversationEntity conversation = conversation(41L, 7L);
         when(actorProvider.requireCurrentActor()).thenReturn(

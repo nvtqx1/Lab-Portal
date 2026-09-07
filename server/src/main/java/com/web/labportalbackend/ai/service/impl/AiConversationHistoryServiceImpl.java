@@ -82,6 +82,12 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
             var message = recent.get(index);
             var response = message.getRole() == AiMessageRole.ASSISTANT
                     ? currentResponse(readResponse(message.getContent()), actions) : null;
+            // Closed actions form a boundary: neither their user input nor their
+            // generated text may reconstitute a cancelled/executed request.
+            if (response != null && response.type() == AiUnifiedChatResponseType.ACTION_RESULT) {
+                history.removeAll();
+                continue;
+            }
             String content = response == null ? message.getContent() : response.answer();
             history.addObject().put("role", message.getRole().name())
                     .put("content", content.substring(0, Math.min(content.length(), 1500)));
