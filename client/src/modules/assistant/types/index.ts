@@ -85,6 +85,8 @@ export interface AssistantConversationDetail {
   id: number;
   title: string;
   messages: AssistantConversationMessage[];
+  hasMore: boolean;
+  nextBeforeId: number | null;
 }
 
 export interface AssistantActionPreview {
@@ -100,6 +102,6 @@ export interface AssistantActionPreview {
 export interface AssistantActionResult {
   suggestionId: number;
   actionType: 'CREATE_LAB_SHIFT';
-  status: 'EXECUTED' | 'CANCELLED';
+  status: 'EXECUTED' | 'CANCELLED' | 'UNAVAILABLE';
   targetId: number | null;
 }

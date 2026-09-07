@@ -96,13 +96,51 @@ class AiShiftDialogueServiceTest {
     }
 
     @Test
-    void omittedLabOnNewRequestRequiresResolutionBeforePreview() {
+    void omittedLabOnNewRequestUsesManagersOnlyAuthorizedLabAndDefaultCapacity() {
         var result = service.resolve(10L, patch("NEW").putNull("requestedLabName").put("date", "2026-09-14")
                 .put("startTime", "09:00").put("endTime", "11:00").toString(), null);
-        assertNull(result.draft());
-        var resolved = service.resolve(10L, patch("CONTINUE").toString(), result.state());
-        assertNotNull(resolved.draft());
-        assertEquals("2026-09-14T09:00:00", resolved.draft().path("startLocalDateTime").asText());
+        assertNotNull(result.draft());
+        assertTrue(result.state().labConfirmed());
+        assertEquals(30, result.draft().path("capacity").asInt());
+        assertEquals("2026-09-14T09:00:00", result.draft().path("startLocalDateTime").asText());
+    }
+
+    @Test
+    void timeFollowUpCannotResolveAnExplicitLabConflict() {
+        var conflict = service.resolve(10L, patch("NEW").put("requestedLabName", "Robotics Lab")
+                .put("date", "2026-09-14").put("startTime", "09:00").toString(), null);
+        var followUp = service.resolve(10L, patch("CONTINUE").putNull("requestedLabName")
+                .put("endTime", "11:00").toString(), conflict.state());
+        assertFalse(followUp.state().labConfirmed());
+        assertNull(followUp.draft());
+        var corrected = service.resolve(10L, patch("CONTINUE").toString(), followUp.state());
+        assertNotNull(corrected.draft());
+    }
+
+    @Test
+    void defaultCapacitySurvivesTimeFollowUpAndCanBeOverridden() {
+        var first = service.resolve(10L, patch("NEW").putNull("requestedLabName")
+                .put("date", "2026-09-14").put("startTime", "09:00").toString(), null);
+        assertEquals(30, first.state().capacity());
+        var second = service.resolve(10L, patch("CONTINUE").putNull("requestedLabName")
+                .put("endTime", "11:00").toString(), first.state());
+        assertNotNull(second.draft());
+        var third = service.resolve(10L, patch("CONTINUE").put("capacity", 15).toString(), second.state());
+        assertEquals(15, third.draft().path("capacity").asInt());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER, third.state().capacitySource());
+    }
+
+    @Test
+    void invalidUserCapacityAndClearedCapacityNeverSilentlyDefaultOnFollowUp() {
+        var invalid = service.resolve(10L, patch("NEW").put("capacity", -5).toString(), null);
+        var followUp = service.resolve(10L, patch("CONTINUE").put("date", "2026-09-14")
+                .put("startTime", "09:00").put("endTime", "11:00").toString(), invalid.state());
+        assertNull(followUp.draft());
+        assertEquals(-5, followUp.state().capacity());
+        var cleared = patch("CONTINUE");
+        cleared.withArray("clearFields").add("capacity");
+        var result = service.resolve(10L, cleared.toString(), followUp.state());
+        assertNull(service.resolve(10L, patch("CONTINUE").toString(), result.state()).draft());
     }
 
     @Test

@@ -29,9 +29,14 @@ export async function getAssistantConversations(): Promise<AssistantConversation
   return response.data.data;
 }
 
-export async function getAssistantConversation(conversationId: number): Promise<AssistantConversationDetail> {
+export async function getAssistantConversation(
+  conversationId: number,
+  beforeId: number | null = null,
+  size = 30,
+): Promise<AssistantConversationDetail> {
   const response = await apiClient.get<Response<AssistantConversationDetail>>(
     `/api/ai/conversations/${conversationId}`,
+    { params: { beforeId: beforeId ?? undefined, size } },
   );
   return response.data.data;
 }

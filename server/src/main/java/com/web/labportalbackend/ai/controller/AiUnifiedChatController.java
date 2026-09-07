@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import com.web.labportalbackend.ai.dto.request.AiConversationHistoryRequest;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -42,9 +44,11 @@ public class AiUnifiedChatController {
 
     @GetMapping("/conversations/{conversationId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Response<AiConversationDetailResponse>> conversation(@PathVariable Long conversationId) {
+    public ResponseEntity<Response<AiConversationDetailResponse>> conversation(
+            @PathVariable Long conversationId,
+            @Valid @ModelAttribute AiConversationHistoryRequest query) {
         return ResponseEntity.ok(Response.ok("AI conversation retrieved successfully",
-                conversationHistoryService.getCurrentUserConversation(conversationId)));
+                conversationHistoryService.getCurrentUserConversation(conversationId, query.getBeforeId(), query.getSize())));
     }
 
     @PostMapping("/chat")

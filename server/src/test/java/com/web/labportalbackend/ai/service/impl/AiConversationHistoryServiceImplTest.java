@@ -153,7 +153,7 @@ class AiConversationHistoryServiceImplTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = com.web.labportalbackend.ai.enums.AiActionSuggestionStatus.class,
-            names = {"EXECUTED", "REJECTED"})
+            names = {"PENDING", "EXECUTED", "REJECTED"})
     void reopeningHistoryProjectsActualOutcomeAndClearsPendingState(
             com.web.labportalbackend.ai.enums.AiActionSuggestionStatus status) throws Exception {
         objectMapper.findAndRegisterModules();
@@ -176,10 +176,41 @@ class AiConversationHistoryServiceImplTest {
         when(suggestions.findAllById(any())).thenReturn(List.of(action));
         var history = service.getCurrentUserConversation(41L);
         var restored = history.messages().getFirst().response();
+        if (status == com.web.labportalbackend.ai.enums.AiActionSuggestionStatus.PENDING) {
+            assertEquals(AiUnifiedChatResponseType.ACTION_PREVIEW, restored.type());
+            assertEquals(55L, restored.actionPreview().suggestionId());
+            assertEquals(55L, service.prepareInput(41L, "11h").pendingState().suggestionId());
+            return;
+        }
         assertEquals(AiUnifiedChatResponseType.ACTION_RESULT, restored.type());
         org.junit.jupiter.api.Assertions.assertNull(restored.actionPreview());
         assertEquals(status.name().equals("EXECUTED") ? "EXECUTED" : "CANCELLED", restored.actionResult().status());
         org.junit.jupiter.api.Assertions.assertNull(service.prepareInput(41L, "hello").pendingState());
+    }
+
+    @Test
+    void cursorPagesKeepBoundaryMessageAndAreScopedToConversation() {
+        when(actorProvider.requireCurrentActor()).thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
+                .thenReturn(Optional.of(conversation(41L, 7L)));
+        var rows = java.util.stream.LongStream.rangeClosed(1, 5).mapToObj(id -> {
+            var row = message(AiMessageRole.USER, "message " + id);
+            row.setId(id);
+            row.setCreatedAt(java.time.Instant.parse("2026-09-07T00:00:00Z"));
+            return row;
+        }).toList();
+        when(messageRepository.findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(eq(41L), any()))
+                .thenReturn(List.of(rows.get(4), rows.get(3), rows.get(2)));
+        var first = service.getCurrentUserConversation(41L, null, 2);
+        assertEquals(List.of(4L, 5L), first.messages().stream().map(m -> m.id()).toList());
+        assertEquals(4L, first.nextBeforeId());
+        when(messageRepository.findByIdAndConversationIdAndActiveTrueAndDeletedFalse(4L, 41L))
+                .thenReturn(Optional.of(rows.get(3)));
+        when(messageRepository.findOlderMessages(eq(41L), eq(rows.get(3).getCreatedAt()), eq(4L), any()))
+                .thenReturn(List.of(rows.get(2), rows.get(1), rows.get(0)));
+        var second = service.getCurrentUserConversation(41L, first.nextBeforeId(), 2);
+        assertEquals(List.of(2L, 3L), second.messages().stream().map(m -> m.id()).toList());
+        assertThrows(EntityNotFoundException.class, () -> service.getCurrentUserConversation(41L, 999L, 2));
     }
 
     private static AiMessageEntity message(AiMessageRole role, String content) {

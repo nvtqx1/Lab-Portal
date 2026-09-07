@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiConversationHistoryServiceImpl implements AiConversationHistoryService {
 
     private static final int CONVERSATION_LIMIT = 50;
-    private static final int MESSAGE_LIMIT = 200;
+    private static final int MESSAGE_LIMIT = 30;
     private static final int TITLE_LIMIT = 100;
 
     private final AiConversationRepository conversationRepository;
@@ -136,16 +136,26 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
 
     @Override
     @Transactional(readOnly = true)
-    public AiConversationDetailResponse getCurrentUserConversation(Long conversationId) {
+    public AiConversationDetailResponse getCurrentUserConversation(Long conversationId, Long beforeId, int size) {
+        if ((beforeId != null && beforeId <= 0) || size < 1 || size > MESSAGE_LIMIT) {
+            throw new IllegalArgumentException("Invalid conversation page");
+        }
         AiConversationEntity conversation = ownedConversation(conversationId);
-        List<AiMessageEntity> messages = new ArrayList<>(messageRepository
-                .findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(
-                        conversation.getId(), PageRequest.of(0, MESSAGE_LIMIT)));
+        var limit = PageRequest.of(0, size + 1);
+        var anchor = beforeId == null ? null : messageRepository
+                .findByIdAndConversationIdAndActiveTrueAndDeletedFalse(beforeId, conversationId)
+                .orElseThrow(() -> new EntityNotFoundException("Conversation cursor not found"));
+        List<AiMessageEntity> pageRows = new ArrayList<>(anchor == null
+                ? messageRepository.findByConversationIdAndActiveTrueAndDeletedFalseOrderByCreatedAtDescIdDesc(conversationId, limit)
+                : messageRepository.findOlderMessages(conversationId, anchor.getCreatedAt(), anchor.getId(), limit));
+        boolean hasMore = pageRows.size() > size;
+        if (hasMore) pageRows.remove(pageRows.size() - 1);
+        List<AiMessageEntity> messages = pageRows;
         Collections.reverse(messages);
         var actions = actionsFor(messages);
         return new AiConversationDetailResponse(conversation.getId(), conversation.getTitle(), messages.stream()
                 .map(message -> toMessageResponse(message, actions))
-                .toList());
+                .toList(), hasMore, hasMore ? messages.getFirst().getId() : null);
     }
 
     private AiConversationEntity ownedConversation(Long conversationId) {
@@ -207,7 +217,8 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
                 executed ? action.getTargetId() : null);
         return new AiUnifiedChatResponse(response.conversationId(), AiUnifiedChatResponseType.ACTION_RESULT,
                 response.assistantKey(), executed ? "Đã tạo ca Lab #" + action.getTargetId() + "."
-                        : "Bản xem trước này không còn hiệu lực.", response.promptTokens(), response.completionTokens(),
+                        : action == null ? "Không tìm thấy bản xem trước trong phạm vi tài khoản hiện tại."
+                        : "Bản xem trước đã được hủy hoặc thay thế bởi yêu cầu mới.", response.promptTokens(), response.completionTokens(),
                 response.citations(), null, result);
     }
 
