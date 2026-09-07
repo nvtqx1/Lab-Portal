@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
@@ -130,6 +130,9 @@ export function AssistantPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [validationError, setValidationError] = useState('');
   const conversationEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const olderScroll = useRef<{ height: number; top: number } | null>(null);
+  const loadedPageCount = useRef(0);
   const chatMutation = useUnifiedAssistantChat();
   const actionMutation = useResolveAssistantAction();
   const conversations = useAssistantConversations();
@@ -141,9 +144,26 @@ export function AssistantPage() {
     }
   }, [conversation.data]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const viewport = scrollRef.current;
+    if (olderScroll.current && viewport) {
+      if (conversation.data && conversation.data.messages.length > loadedPageCount.current) {
+        viewport.scrollTop = olderScroll.current.top + viewport.scrollHeight - olderScroll.current.height;
+        olderScroll.current = null;
+      }
+      return;
+    }
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [turns]);
+
+  const loadOlderMessages = async () => {
+    const viewport = scrollRef.current;
+    if (!viewport || conversation.isFetching || chatMutation.isPending || actionMutation.isPending) return;
+    loadedPageCount.current = conversation.data?.messages.length ?? 0;
+    olderScroll.current = { height: viewport.scrollHeight, top: viewport.scrollTop };
+    const result = await conversation.fetchNextPage();
+    if (result.isError) olderScroll.current = null;
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -173,6 +193,7 @@ export function AssistantPage() {
   const startNewConversation = () => {
     if (chatMutation.isPending || actionMutation.isPending) return;
     setConversationId(null);
+    olderScroll.current = null;
     setTurns([]);
     setInput('');
     setValidationError('');
@@ -183,6 +204,7 @@ export function AssistantPage() {
     if (selectedConversationId === conversationId) return;
     setTurns([]);
     setConversationId(selectedConversationId);
+    olderScroll.current = null;
   };
 
   const handleResolveAction = (turnId: string, suggestionId: number, decision: 'confirm' | 'cancel') => {
@@ -253,7 +275,21 @@ export function AssistantPage() {
             Không cần chọn chủ đề hoặc tài nguyên; backend kiểm tra lại quyền cho từng yêu cầu.
           </div>
 
-          <div aria-live="polite" className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+          <div ref={scrollRef} aria-live="polite" className="max-h-[65vh] flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+          {conversation.hasNextPage ? (
+            <div className="flex justify-center">
+              <Button
+                disabled={conversation.isFetching || chatMutation.isPending || actionMutation.isPending}
+                loading={conversation.isFetchingNextPage}
+                loadingText="Đang tải…"
+                onClick={() => { void loadOlderMessages(); }}
+                type="button"
+                variant="outline"
+              >
+                Tải tin nhắn cũ hơn
+              </Button>
+            </div>
+          ) : null}
           {turns.length === 0 ? (
             <div className="flex min-h-96 flex-col items-center justify-center text-center">
               <Sparkles aria-hidden="true" className="h-9 w-9 text-slate-400" />

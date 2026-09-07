@@ -16,7 +16,11 @@ public interface AiConversationHistoryService {
 
     List<AiConversationSummaryResponse> listCurrentUserConversations();
 
-    AiConversationDetailResponse getCurrentUserConversation(Long conversationId);
+    default AiConversationDetailResponse getCurrentUserConversation(Long conversationId) {
+        return getCurrentUserConversation(conversationId, null, 30);
+    }
+
+    AiConversationDetailResponse getCurrentUserConversation(Long conversationId, Long beforeId, int size);
 
     record PreparedInput(Long conversationId, String effectiveInput, AiShiftDialogueState pendingState) {
         public PreparedInput(Long conversationId, String effectiveInput) {

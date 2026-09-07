@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.web.labportalbackend.ai.enums.AiAssistantSystemRole;
 import com.web.labportalbackend.ai.service.AiCurrentActorProvider;
 import com.web.labportalbackend.ai.service.AiShiftDialogueState;
+import com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource;
 import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidationException;
 import com.web.labportalbackend.lab.repository.LaboratoryRepository;
 import java.time.DateTimeException;
@@ -70,9 +71,12 @@ public class AiShiftDialogueService {
         var lab = labs.findAiContextLaboratory(actor.id(), labId, actor.role().name())
                 .orElseThrow(() -> new AccessDeniedException("Lab is outside the manager's scope"));
         boolean continuing = "CONTINUE".equals(patch.mode()) && previous != null && labId.equals(previous.labId());
-        boolean labConfirmed = patch.requestedLabName() != null
-                ? normalizedName(lab.name()).equals(normalizedName(patch.requestedLabName()))
-                : continuing && previous.labConfirmed();
+        // The candidate was already resolved from the manager's authorized scope. A manager
+        // currently has one managed Lab candidate, so an omitted Lab name means "that Lab";
+        // only an explicitly different name must require clarification.
+        boolean labConfirmed = patch.requestedLabName() == null
+                ? !continuing || previous.labConfirmed()
+                : normalizedName(lab.name()).equals(normalizedName(patch.requestedLabName()));
         var prior = continuing
                 ? previous : new AiShiftDialogueState(labId, null, null, null, null, null);
         String date = value("date", patch.date(), prior.date(), patch.clearFields());
@@ -81,8 +85,16 @@ public class AiShiftDialogueService {
         String zone = value("timeZone", patch.timeZone(), prior.timeZone(), patch.clearFields());
         Integer capacity = patch.clearFields().contains("capacity") ? null
                 : patch.capacity() != null ? patch.capacity() : prior.capacity();
-        if (!continuing && zone == null && !patch.clearFields().contains("timeZone")) zone = "Asia/Ho_Chi_Minh";
-        if (!continuing && capacity == null && !patch.clearFields().contains("capacity")) capacity = lab.capacity();
+        ValueSource capacitySource = source("capacity", patch.capacity(), prior.capacitySource(), patch.clearFields());
+        ValueSource zoneSource = source("timeZone", patch.timeZone(), prior.timeZoneSource(), patch.clearFields());
+        if (zone == null && zoneSource == null) {
+            zone = "Asia/Ho_Chi_Minh";
+            zoneSource = ValueSource.DEFAULT;
+        }
+        if (capacity == null && capacitySource == null) {
+            capacity = lab.capacity();
+            capacitySource = ValueSource.DEFAULT;
+        }
         List<String> missing = new ArrayList<>();
         date = validDate(date);
         start = validTime(start);
@@ -95,14 +107,13 @@ public class AiShiftDialogueService {
             missing.add("giờ kết thúc sau giờ bắt đầu");
         }
         try { ZoneId.of(zone); } catch (DateTimeException | NullPointerException exception) {
-            zone = null;
             missing.add("múi giờ hợp lệ");
+            // Keep the supplied value/source in state so a follow-up cannot silently default it.
         }
         if (capacity == null || capacity <= 0) {
-            capacity = null;
             missing.add("sức chứa lớn hơn 0");
         }
-        if (date != null && start != null && zone != null) {
+        if (date != null && start != null && zone != null && !missing.contains("múi giờ hợp lệ")) {
             var local = LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(start));
             var offsets = ZoneId.of(zone).getRules().getValidOffsets(local);
             if (offsets.size() != 1) {
@@ -113,7 +124,8 @@ public class AiShiftDialogueService {
                 date = null;
             }
         }
-        var state = new AiShiftDialogueState(labId, date, start, end, capacity, zone, null, labConfirmed);
+        var state = new AiShiftDialogueState(labId, date, start, end, capacity, zone, null, labConfirmed,
+                capacitySource, zoneSource);
         if (!labConfirmed) {
             return new Resolution(state, "Tôi chưa xác định chắc Lab bạn yêu cầu. Bạn hãy nhập tên đầy đủ của Lab được cấp quyền: "
                     + lab.name() + ".", null);
@@ -131,6 +143,10 @@ public class AiShiftDialogueService {
 
     private static String value(String field, String supplied, String previous, List<String> cleared) {
         return cleared.contains(field) ? null : supplied != null ? supplied : previous;
+    }
+
+    private static ValueSource source(String field, Object supplied, ValueSource previous, List<String> cleared) {
+        return cleared.contains(field) ? ValueSource.CLEARED : supplied != null ? ValueSource.USER : previous;
     }
 
     private static String normalizedName(String value) {

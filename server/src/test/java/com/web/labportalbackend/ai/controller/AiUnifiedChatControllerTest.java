@@ -120,7 +120,7 @@ class AiUnifiedChatControllerTest {
         when(conversationHistoryService.listCurrentUserConversations()).thenReturn(List.of(
                 new AiConversationSummaryResponse(41L, "Tạo ca AI Research Lab",
                         Instant.parse("2026-09-06T08:00:00Z"))));
-        when(conversationHistoryService.getCurrentUserConversation(41L)).thenReturn(
+        when(conversationHistoryService.getCurrentUserConversation(41L, null, 30)).thenReturn(
                 new AiConversationDetailResponse(41L, "Tạo ca AI Research Lab", List.of()));
 
         mockMvc.perform(get("/api/ai/conversations")
@@ -135,6 +135,17 @@ class AiUnifiedChatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(41))
                 .andExpect(jsonPath("$.data.messages").isEmpty());
+    }
+
+    @Test
+    void invalidHistoryCursorAndSizeAreRejectedAtBoundary() throws Exception {
+        mockMvc.perform(get("/api/ai/conversations/41").contextPath("/api")
+                        .param("size", "31").with(user("manager").roles("LAB_MANAGER")))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/ai/conversations/41").contextPath("/api")
+                        .param("beforeId", "-1").with(user("manager").roles("LAB_MANAGER")))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(conversationHistoryService);
     }
 
     @Test
