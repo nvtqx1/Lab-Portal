@@ -192,6 +192,70 @@ def test_named_authorized_lab_still_selects_the_create_candidate() -> None:
     assert backend.messages is None
 
 
+def test_pending_shift_field_reply_cannot_be_routed_to_available_slots_read() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}')
+    payload = _manager_shift_request(
+        user_input='{"dialogueVersion":1,"message":"Múi giờ Việt Nam.",'
+        '"pendingState":{"labId":1,"date":"2026-09-22","startTime":"09:00:00",'
+        '"endTime":"11:00:00","capacity":15,"timeZone":null,"labConfirmed":true},'
+        '"history":[]}'
+    )
+
+    result = ToolPlanner(backend).plan(payload)
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
+
+
+def test_pending_shift_explicit_read_request_remains_read_only() -> None:
+    backend = StubBackend('{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}')
+    payload = _manager_shift_request(
+        user_input='{"dialogueVersion":1,"message":"Cho tôi xem các ca trống ngày 23/09/2026.",'
+        '"pendingState":{"labId":1,"date":"2026-09-22","startTime":"09:00:00",'
+        '"endTime":"11:00:00","capacity":15,"timeZone":null,"labConfirmed":true},'
+        '"history":[]}'
+    )
+
+    result = ToolPlanner(backend).plan(payload)
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.available.slots.read"
+
+
+def test_semantic_create_request_for_another_lab_is_refused_before_preview() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
+    payload = _manager_shift_request(
+        user_input='{"dialogueVersion":1,"message":"Tạo ca tại Robotics Lab ngày 18/09/2026 từ 8h đến 10h.",'
+        '"pendingState":null,"history":[]}'
+    )
+
+    result = ToolPlanner(backend).plan(payload)
+
+    assert result.decision == "REFUSAL"
+    assert result.message == "Bạn chỉ có thể tạo ca cho Lab mình đang quản lý."
+    assert result.tool_request is None
+
+
+def test_existing_shift_update_without_update_tool_is_refused() -> None:
+    backend = StubBackend(
+        '{"decision":"CLARIFICATION","intent":"UNCLEAR","candidateIndex":null,"message":"wrong"}'
+    )
+    payload = _manager_shift_request(
+        user_input='{"dialogueVersion":1,"message":"Đổi ca ngày 03/10/2026 thành bắt đầu lúc 10h.",'
+        '"pendingState":null,"history":[]}'
+    )
+
+    result = ToolPlanner(backend).plan(payload)
+
+    assert result.decision == "REFUSAL"
+    assert result.message == "Hiện chưa hỗ trợ chỉnh sửa ca đã tạo. Vui lòng hủy ca cũ và tạo ca mới."
+    assert result.tool_request is None
+
+
 def test_manager_managed_shift_request_selects_managed_summary_without_model() -> None:
     backend = StubBackend('{"decision":"CLARIFICATION","candidateIndex":null,"message":"wrong"}')
     request = _manager_shift_request(
