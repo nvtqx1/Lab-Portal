@@ -11,6 +11,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -135,6 +136,18 @@ class AiUnifiedChatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(41))
                 .andExpect(jsonPath("$.data.messages").isEmpty());
+    }
+
+    @Test
+    void authenticatedCallerCanDeleteOwnedConversation() throws Exception {
+        mockMvc.perform(delete("/api/ai/conversations/41")
+                        .contextPath("/api")
+                        .with(csrf())
+                        .with(user("manager").roles("LAB_MANAGER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("AI conversation deleted successfully"));
+
+        verify(conversationHistoryService).deleteCurrentUserConversation(41L);
     }
 
     @Test

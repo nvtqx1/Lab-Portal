@@ -140,21 +140,25 @@ def test_empty_continuation_patch_is_retried_instead_of_repeating_question():
     assert backend.calls == 2
 
 
-def test_extraction_prompt_covers_reported_lab_and_time_boundaries():
+def test_extraction_prompt_does_not_require_or_invent_a_lab_name():
     backend = Backend(json.dumps(patch(
-        requestedLabName="AI Research Lab", mode="NEW", date="2026-09-25",
-        startTime="08:00:00", endTime=None,
+        requestedLabName=None, mode="NEW", date="2026-09-27",
+        startTime="09:00:00", endTime="11:00:00",
     )))
     envelope = dict(
         dialogueVersion=1,
-        message="Tạo ca tại AI Research Lab lúc 8 giờ ngày 25/09/2026.",
+        message="Tạo ca ngày 27/09/2026 từ 9h đến 11h.",
         pendingState=None,
         temporalContext=dict(currentDate="2026-09-23", defaultTimeZone="Asia/Ho_Chi_Minh"),
     )
 
-    interpret_shift(backend, json.dumps(envelope), 10)
+    response = interpret_shift(backend, json.dumps(envelope), 10)
 
     prompt = backend.messages[0]["content"]
-    assert "AI Research Lab lúc 8 giờ" in prompt
-    assert "Tạo ca mới ngày 04/10 từ 13h đến 15h" in prompt
-    assert "Tạo ca ngày 26/09/2026, kết thúc lúc 11h" in prompt
+    assert json.loads(response.answer)["requestedLabName"] is None
+    assert "requestedLabName is optional" in prompt
+    assert "generic word 'Lab' alone is not a Lab name" in prompt
+    assert "day/month[/year]" in prompt
+    assert "next occurrence on or after temporalContext.currentDate" in prompt
+    assert "AI Research Lab" not in prompt
+    assert json.loads(backend.messages[1]["content"])["message"] == envelope["message"]

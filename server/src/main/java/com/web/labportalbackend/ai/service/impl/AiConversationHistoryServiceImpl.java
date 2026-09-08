@@ -3,6 +3,7 @@ package com.web.labportalbackend.ai.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.labportalbackend.ai.dto.response.AiConversationDetailResponse;
+import com.web.labportalbackend.ai.config.AiShiftDefaults;
 import com.web.labportalbackend.ai.dto.response.AiConversationMessageResponse;
 import com.web.labportalbackend.ai.dto.response.AiConversationSummaryResponse;
 import com.web.labportalbackend.ai.dto.response.AiUnifiedChatResponse;
@@ -27,7 +28,6 @@ import jakarta.persistence.EntityNotFoundException;
 import java.time.Instant;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -49,16 +49,17 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
     private final ObjectMapper objectMapper;
     private final AiActionSuggestionRepository suggestions;
     private final Clock clock;
-    private static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private final AiShiftDefaults defaults;
 
     @Autowired
     public AiConversationHistoryServiceImpl(AiConversationRepository conversationRepository,
                                             AiMessageRepository messageRepository,
                                             AiCurrentActorProvider currentActorProvider,
                                             ObjectMapper objectMapper,
-                                            AiActionSuggestionRepository suggestions) {
+                                            AiActionSuggestionRepository suggestions,
+                                            AiShiftDefaults defaults) {
         this(conversationRepository, messageRepository, currentActorProvider, objectMapper, suggestions,
-                Clock.systemUTC());
+                Clock.systemUTC(), defaults);
     }
 
     AiConversationHistoryServiceImpl(AiConversationRepository conversationRepository,
@@ -66,13 +67,15 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
                                      AiCurrentActorProvider currentActorProvider,
                                      ObjectMapper objectMapper,
                                      AiActionSuggestionRepository suggestions,
-                                     Clock clock) {
+                                     Clock clock,
+                                     AiShiftDefaults defaults) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.currentActorProvider = currentActorProvider;
         this.objectMapper = objectMapper;
         this.suggestions = suggestions;
         this.clock = clock;
+        this.defaults = defaults;
     }
 
     @Override
@@ -95,8 +98,8 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
         envelope.put("message", input);
         envelope.set("pendingState", objectMapper.valueToTree(state));
         var temporalContext = envelope.putObject("temporalContext");
-        temporalContext.put("currentDate", LocalDate.now(clock.withZone(DEFAULT_TIME_ZONE)).toString());
-        temporalContext.put("defaultTimeZone", DEFAULT_TIME_ZONE.getId());
+        temporalContext.put("currentDate", LocalDate.now(clock.withZone(defaults.timeZone())).toString());
+        temporalContext.put("defaultTimeZone", defaults.timeZoneId());
         var history = envelope.putArray("history");
         // Include question + answer pairs in chronological order, with a bounded input budget.
         for (int index = recent.size() - 1; index >= 0; index--) {
@@ -183,6 +186,15 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
         return new AiConversationDetailResponse(conversation.getId(), conversation.getTitle(), messages.stream()
                 .map(message -> toMessageResponse(message, actions))
                 .toList(), hasMore, hasMore ? messages.getFirst().getId() : null);
+    }
+
+    @Override
+    @Transactional
+    public void deleteCurrentUserConversation(Long conversationId) {
+        AiConversationEntity conversation = ownedConversation(conversationId);
+        conversation.setActive(false);
+        conversation.setDeleted(true);
+        conversationRepository.save(conversation);
     }
 
     private AiConversationEntity ownedConversation(Long conversationId) {

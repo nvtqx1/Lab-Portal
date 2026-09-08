@@ -86,6 +86,8 @@ booking:
     cleanup-cron: "${BOOKING_OUTBOX_CLEANUP_CRON:0 30 2 * * *}"
 
 app:
+  ai:
+    default-time-zone: ${AI_DEFAULT_TIME_ZONE:Asia/Ho_Chi_Minh}
   async:
     side-effects:
       core-pool-size: ${SIDE_EFFECT_CORE_POOL_SIZE:2}

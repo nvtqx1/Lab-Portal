@@ -22,6 +22,8 @@ public interface AiConversationHistoryService {
 
     AiConversationDetailResponse getCurrentUserConversation(Long conversationId, Long beforeId, int size);
 
+    void deleteCurrentUserConversation(Long conversationId);
+
     record PreparedInput(Long conversationId, String effectiveInput, AiShiftDialogueState pendingState) {
         public PreparedInput(Long conversationId, String effectiveInput) {
             this(conversationId, effectiveInput, null);

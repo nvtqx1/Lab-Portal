@@ -5,6 +5,7 @@ import { queryKeys } from '../../../shared/api';
 import {
   chatWithAssistant,
   chatWithUnifiedAssistant,
+  deleteAssistantConversation,
   getAssistantConversation,
   getAssistantConversations,
   resolveAssistantAction,
@@ -53,6 +54,17 @@ export function useAssistantConversation(conversationId: number | null) {
       }
     : undefined, [query.data]);
   return { ...query, data };
+}
+
+export function useDeleteAssistantConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationId: number) => deleteAssistantConversation(conversationId),
+    onSuccess: (_, conversationId) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.assistant.conversations });
+      queryClient.removeQueries({ queryKey: queryKeys.assistant.conversation(conversationId) });
+    },
+  });
 }
 
 export function useResolveAssistantAction() {

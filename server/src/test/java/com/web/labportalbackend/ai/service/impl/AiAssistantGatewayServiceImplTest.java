@@ -83,8 +83,11 @@ class AiAssistantGatewayServiceImplTest {
                     ((AiAssistantProfile) invocation.getArgument(0)).retrievalNamespace()));
     private final AiAuditUsageService auditUsageService = mock(AiAuditUsageService.class);
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final com.web.labportalbackend.ai.config.AiShiftDefaults shiftDefaults =
+            new com.web.labportalbackend.ai.config.AiShiftDefaults("Asia/Ho_Chi_Minh");
     private final AiAssistantGatewayServiceImpl service = new AiAssistantGatewayServiceImpl(
-            availabilityService, contextFacade, gatewayClient, objectMapper, auditUsageService, ragRetrievalService);
+            availabilityService, contextFacade, gatewayClient, objectMapper, auditUsageService, ragRetrievalService,
+            shiftDefaults);
 
     @Test
     void parentResourceTypeRemainsExplicitlyNullWithProductionJacksonInclusion() {
