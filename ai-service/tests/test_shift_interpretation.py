@@ -89,15 +89,17 @@ def test_invalid_semantic_plan_requests_rephrasing_without_resetting_pending_wor
     assert result.tool_request is None
 
 
-@pytest.mark.parametrize("intent,tool", [("CREATE_SHIFT", "lab.available.slots.read"),
-                                        ("READ", "lab.shift.create.draft")])
-def test_semantic_intent_tool_mismatch_never_dispatches(intent, tool):
+@pytest.mark.parametrize("intent,tool,expected_decision", [
+    ("CREATE_SHIFT", "lab.available.slots.read", "REFUSAL"),
+    ("READ", "lab.shift.create.draft", "CLARIFICATION"),
+])
+def test_semantic_intent_tool_mismatch_never_dispatches(intent, tool, expected_decision):
     backend = Backend(json.dumps(dict(decision="TOOL_REQUEST", intent=intent, candidateIndex=0, message=None)))
     request = ToolPlanningRequest.model_validate(dict(input='{"dialogueVersion":1,"message":"request"}',
         candidates=[dict(assistantKey="LAB_ASSISTANT", schemaVersion="v1", toolId=tool,
                         description="Candidate", resource=dict(resourceType="LABORATORY", resourceId=10), parentResource=None)]))
     result = ToolPlanner(backend).plan(request)
-    assert result.decision == "CLARIFICATION"
+    assert result.decision == expected_decision
     assert result.tool_request is None
 
 
