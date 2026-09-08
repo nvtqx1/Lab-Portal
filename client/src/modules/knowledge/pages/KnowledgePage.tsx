@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
 import { getStoredRole, getStoredUser } from '../../../shared/api';
-import { Button } from '../../../shared/components';
+import { Button, ConfirmDialog } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
 import { getManagedLabId } from '../../../shared/utils/membership';
 import { ingestKnowledgeDocument, reindexKnowledgeDocument, revokeKnowledgeDocument } from '../api';
@@ -43,6 +43,7 @@ export function KnowledgePage() {
   const [groupId, setGroupId] = useState('');
   const [documentId, setDocumentId] = useState('');
   const [error, setError] = useState('');
+  const [revokeConfirmationOpen, setRevokeConfirmationOpen] = useState(false);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof ingestKnowledgeDocument>> | null>(null);
   const allowedVisibilities = useMemo(() => visibilityOptions(domain), [domain]);
 
@@ -102,11 +103,20 @@ export function KnowledgePage() {
         </form>
 
         <aside className="space-y-5">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white"><RefreshCw aria-hidden="true" className="h-4 w-4" /> Bảo trì tài liệu</h2><label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="knowledge-document-id">Document ID<input id="knowledge-document-id" className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white" min={1} type="number" value={documentId} onChange={(event) => setDocumentId(event.target.value)} /></label><p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Nhập ID để reindex bằng form bên trái hoặc thu hồi quyền truy cập.</p><Button className="mt-4 w-full" disabled={Number(documentId) <= 0} loading={revoke.isPending} variant="danger" onClick={() => { if (window.confirm('Thu hồi tài liệu và toàn bộ chunk liên quan?')) revoke.mutate(); }}><Trash2 aria-hidden="true" className="h-4 w-4" /> Thu hồi tài liệu</Button>{revoke.isError ? <p className="mt-3 text-sm text-red-700 dark:text-red-300" role="alert">{getError(revoke.error)}</p> : null}</section>
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white"><RefreshCw aria-hidden="true" className="h-4 w-4" /> Bảo trì tài liệu</h2><label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="knowledge-document-id">Document ID<input id="knowledge-document-id" className="mt-2 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white" min={1} type="number" value={documentId} onChange={(event) => setDocumentId(event.target.value)} /></label><p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Nhập ID để reindex bằng form bên trái hoặc thu hồi quyền truy cập.</p><Button className="mt-4 w-full" disabled={Number(documentId) <= 0} loading={revoke.isPending} variant="danger" onClick={() => setRevokeConfirmationOpen(true)}><Trash2 aria-hidden="true" className="h-4 w-4" /> Thu hồi tài liệu</Button>{revoke.isError ? <p className="mt-3 text-sm text-red-700 dark:text-red-300" role="alert">{getError(revoke.error)}</p> : null}</section>
           {lastResult ? <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"><h2 className="font-semibold">Đã lập chỉ mục thành công</h2><dl className="mt-3 grid grid-cols-2 gap-2"><dt>Document ID</dt><dd className="font-semibold text-right">{lastResult.documentId}</dd><dt>Namespace</dt><dd className="font-semibold text-right">{lastResult.namespace}</dd><dt>Số chunk</dt><dd className="font-semibold text-right">{lastResult.chunkCount}</dd><dt>Phiên bản</dt><dd className="font-semibold text-right">{lastResult.version}</dd></dl></section> : null}
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p className="flex gap-2 font-semibold"><ShieldAlert aria-hidden="true" className="h-5 w-5 shrink-0" /> Tài liệu không phải chỉ dẫn hệ thống</p><p className="mt-2 leading-6">Nội dung trong tài liệu không thể ghi đè policy, quyền người dùng hoặc quy tắc an toàn của trợ lý.</p></section>
         </aside>
       </div>
+      <ConfirmDialog
+        confirmLabel="Thu hồi"
+        isOpen={revokeConfirmationOpen}
+        isPending={revoke.isPending}
+        message="Tài liệu và toàn bộ chunk liên quan sẽ bị thu hồi quyền truy cập."
+        onCancel={() => setRevokeConfirmationOpen(false)}
+        onConfirm={() => revoke.mutate(undefined, { onSuccess: () => setRevokeConfirmationOpen(false) })}
+        title="Thu hồi tài liệu?"
+      />
     </section>
   );
 }

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { Button } from '../../../shared/components';
+import { Button, ConfirmDialog, toast } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
 import {
   useAssistantConversation,
@@ -133,6 +133,7 @@ export function AssistantPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [validationError, setValidationError] = useState('');
+  const [conversationPendingDelete, setConversationPendingDelete] = useState<number | null>(null);
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const olderScroll = useRef<{ height: number; top: number } | null>(null);
@@ -214,15 +215,23 @@ export function AssistantPage() {
 
   const handleDeleteConversation = (selectedConversationId: number) => {
     if (chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending) return;
-    if (!window.confirm('Xóa lịch sử cuộc trò chuyện này?')) return;
+    setConversationPendingDelete(selectedConversationId);
+  };
+
+  const confirmDeleteConversation = () => {
+    if (conversationPendingDelete === null || deleteConversationMutation.isPending) return;
+    const selectedConversationId = conversationPendingDelete;
     deleteConversationMutation.mutate(selectedConversationId, {
       onSuccess: () => {
+        setConversationPendingDelete(null);
         if (selectedConversationId === conversationId) {
           setConversationId(null);
           setTurns([]);
           olderScroll.current = null;
         }
+        toast.success('Đã xóa lịch sử cuộc trò chuyện.');
       },
+      onError: (error) => toast.error(getErrorMessage(error)),
     });
   };
 
@@ -391,6 +400,16 @@ export function AssistantPage() {
           </form>
         </div>
       </div>
+      <ConfirmDialog
+        cancelLabel="Không xóa"
+        confirmLabel="Xóa lịch sử"
+        isOpen={conversationPendingDelete !== null}
+        isPending={deleteConversationMutation.isPending}
+        message="Cuộc trò chuyện sẽ bị xóa khỏi lịch sử của bạn."
+        onCancel={() => setConversationPendingDelete(null)}
+        onConfirm={confirmDeleteConversation}
+        title="Xóa cuộc trò chuyện?"
+      />
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { Button, EmptyState, ErrorState, LoadingState, ResponsiveTable } from '../../../shared/components';
+import { Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Modal, ResponsiveTable } from '../../../shared/components';
 import { getManagedLabId, getManagedLabName } from '../../../shared/utils/membership';
 import { useCurrentUser } from '../../user/hooks';
 import { useLabMembers, useRemoveLabMember } from '../hooks';
@@ -32,21 +32,22 @@ export function LabMembersPage() {
   const { data: members = [], isLoading, isError } = useLabMembers(managedLabId);
   const removeMemberMutation = useRemoveLabMember();
   const [search, setSearch] = useState('');
+  const [memberPendingRemove, setMemberPendingRemove] = useState<(typeof members)[number] | null>(null);
+  const [selectedMemberDetail, setSelectedMemberDetail] = useState<(typeof members)[number] | null>(null);
 
   const handleRemoveMember = (member: (typeof members)[number]) => {
     if (!managedLabId) {
       return;
     }
+    setMemberPendingRemove(member);
+  };
 
-    const confirmed = window.confirm(
-      'Bạn có chắc muốn gỡ thành viên này khỏi PTN không? Tài khoản vẫn được giữ lại, chỉ gỡ tư cách thành viên trong PTN.',
+  const confirmRemoveMember = () => {
+    if (!managedLabId || !memberPendingRemove) return;
+    removeMemberMutation.mutate(
+      { labId: managedLabId, userId: memberPendingRemove.userId },
+      { onSuccess: () => setMemberPendingRemove(null) },
     );
-
-    if (!confirmed) {
-      return;
-    }
-
-    removeMemberMutation.mutate({ labId: managedLabId, userId: member.userId });
   };
 
   const filteredMembers = useMemo(() => {
@@ -142,7 +143,7 @@ export function LabMembersPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => window.alert(`${member.fullName || member.email}\n${member.email}`)}
+                      onClick={() => setSelectedMemberDetail(member)}
                     >
                       Xem chi tiết
                     </Button>
@@ -163,6 +164,28 @@ export function LabMembersPage() {
           </table>
         </ResponsiveTable>
       )}
+      <ConfirmDialog
+        confirmLabel="Gỡ thành viên"
+        isOpen={memberPendingRemove !== null}
+        isPending={removeMemberMutation.isPending}
+        message="Tài khoản vẫn được giữ lại; hệ thống chỉ gỡ tư cách thành viên trong PTN."
+        onCancel={() => setMemberPendingRemove(null)}
+        onConfirm={confirmRemoveMember}
+        title="Gỡ thành viên khỏi PTN?"
+      />
+      <Modal
+        centered
+        closeOnEscape
+        isOpen={selectedMemberDetail !== null}
+        onClose={() => setSelectedMemberDetail(null)}
+        size="sm"
+        title="Chi tiết thành viên"
+      >
+        <dl className="space-y-3 text-sm">
+          <div><dt className="text-slate-500">Họ tên</dt><dd className="font-semibold text-slate-950">{selectedMemberDetail?.fullName || 'Chưa cập nhật'}</dd></div>
+          <div><dt className="text-slate-500">Email</dt><dd className="text-slate-800">{selectedMemberDetail?.email}</dd></div>
+        </dl>
+      </Modal>
     </section>
   );
 }

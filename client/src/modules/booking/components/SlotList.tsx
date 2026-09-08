@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
+import { ConfirmDialog } from '../../../shared/components';
 import type { BookingResponse } from '../api';
 import { useCancelBooking, useCreateBooking, useMyBookings } from '../hooks';
 import { useLabSlots } from '../hooks';
@@ -39,6 +41,7 @@ export function SlotList({
   const { data: myBookings = [] } = useMyBookings(mode === 'student');
   const createBooking = useCreateBooking(labId);
   const cancelBooking = useCancelBooking(labId);
+  const [bookingPendingCancel, setBookingPendingCancel] = useState<number | null>(null);
 
   if (!labId) {
     return (
@@ -108,16 +111,24 @@ export function SlotList({
             userBooking={mode === 'student' ? findActiveBookingForSlot(myBookings, slot.id) : null}
             isMutating={createBooking.isPending || cancelBooking.isPending}
             onRegister={(selectedSlot) => createBooking.mutate(selectedSlot.id)}
-            onCancelBooking={(booking) => {
-              if (window.confirm('Bạn có chắc muốn hủy đăng ký sử dụng khung giờ này không?')) {
-                cancelBooking.mutate(booking.id);
-              }
-            }}
+            onCancelBooking={(booking) => setBookingPendingCancel(booking.id)}
             onViewDetail={(selectedSlot) => navigate(`/app/lab-slots/${selectedSlot.id}`)}
             onCancelSlot={(selectedSlot) => onCancelSlot?.(selectedSlot.id)}
           />
         ))}
       </div>
+      <ConfirmDialog
+        confirmLabel="Hủy đăng ký"
+        isOpen={bookingPendingCancel !== null}
+        isPending={cancelBooking.isPending}
+        message="Bạn có chắc muốn hủy đăng ký sử dụng khung giờ này không?"
+        onCancel={() => setBookingPendingCancel(null)}
+        onConfirm={() => {
+          if (bookingPendingCancel === null) return;
+          cancelBooking.mutate(bookingPendingCancel, { onSuccess: () => setBookingPendingCancel(null) });
+        }}
+        title="Hủy đăng ký sử dụng?"
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { resolveApiAssetUrl } from '../../../shared/api';
+import { ConfirmDialog } from '../../../shared/components';
 import { getManagedLabId, getManagedLabName } from '../../../shared/utils/membership';
 import { useCurrentUser } from '../../user/hooks';
 import type { ApplicationStatus } from '../api';
@@ -40,24 +41,24 @@ export function ApplicationList() {
   const { data: applications = [], isLoading, isError } = useApplications(managedLabId);
   const reviewMutation = useReviewApplication(managedLabId);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [pendingReview, setPendingReview] = useState<{
+    appId: number;
+    status: Extract<ApplicationStatus, 'APPROVED' | 'REJECTED'>;
+  } | null>(null);
 
-  const handleReview = async (
+  const handleReview = (
     appId: number,
     status: Extract<ApplicationStatus, 'APPROVED' | 'REJECTED'>,
   ) => {
-    const confirmed = window.confirm(
-      status === 'APPROVED'
-        ? 'Bạn chắc chắn muốn duyệt đơn này?'
-        : 'Bạn chắc chắn muốn từ chối đơn này?',
-    );
+    setPendingReview({ appId, status });
+  };
 
-    if (!confirmed) {
-      return;
-    }
-
-    setProcessingId(appId);
+  const confirmReview = async () => {
+    if (!pendingReview) return;
+    setProcessingId(pendingReview.appId);
     try {
-      await reviewMutation.mutateAsync({ appId, status });
+      await reviewMutation.mutateAsync(pendingReview);
+      setPendingReview(null);
     } finally {
       setProcessingId(null);
     }
@@ -192,7 +193,7 @@ export function ApplicationList() {
                             type="button"
                             disabled={disableActions}
                             className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                            onClick={() => void handleReview(application.id, 'APPROVED')}
+                            onClick={() => handleReview(application.id, 'APPROVED')}
                           >
                             {isProcessing ? 'Đang xử lý...' : 'Duyệt'}
                           </button>
@@ -200,7 +201,7 @@ export function ApplicationList() {
                             type="button"
                             disabled={disableActions}
                             className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
-                            onClick={() => void handleReview(application.id, 'REJECTED')}
+                            onClick={() => handleReview(application.id, 'REJECTED')}
                           >
                             Từ chối
                           </button>
@@ -216,6 +217,18 @@ export function ApplicationList() {
           </table>
         </div>
       )}
+      <ConfirmDialog
+        confirmLabel={pendingReview?.status === 'APPROVED' ? 'Duyệt đơn' : 'Từ chối đơn'}
+        isOpen={pendingReview !== null}
+        isPending={reviewMutation.isPending}
+        message={pendingReview?.status === 'APPROVED'
+          ? 'Bạn chắc chắn muốn duyệt đơn này?'
+          : 'Bạn chắc chắn muốn từ chối đơn này?'}
+        onCancel={() => setPendingReview(null)}
+        onConfirm={() => { void confirmReview(); }}
+        title={pendingReview?.status === 'APPROVED' ? 'Duyệt đơn ứng tuyển?' : 'Từ chối đơn ứng tuyển?'}
+        variant={pendingReview?.status === 'APPROVED' ? 'success' : 'danger'}
+      />
     </section>
   );
 }
