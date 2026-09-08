@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.models import AssistantKey, ToolPlanningRequest
 from app.runtime import RuntimeGeneration
-from app.tool_planner import SAFE_REFUSAL, ToolPlanner
+from app.tool_planner import ToolPlanner
 
 
 class StubBackend:
@@ -70,7 +70,9 @@ def _request() -> ToolPlanningRequest:
 
 
 def test_planner_returns_only_the_canonical_server_candidate() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_request())
 
@@ -94,20 +96,20 @@ def test_planner_returns_only_the_canonical_server_candidate() -> None:
 
 def test_planner_rejects_model_invented_fields() -> None:
     backend = StubBackend(
-        '{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null,'
+        '{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null,'
         '"toolId":"database.raw.sql"}'
     )
 
     result = ToolPlanner(backend).plan(_request())
 
-    assert result.decision == "REFUSAL"
-    assert result.message == SAFE_REFUSAL
+    assert result.decision == "CLARIFICATION"
+    assert result.message == "Tôi chưa hiểu rõ thông tin mới. Bạn vui lòng diễn đạt lại."
     assert result.tool_request is None
 
 
 def test_planner_preserves_a_clarification_without_selecting_a_tool() -> None:
     backend = StubBackend(
-        '{"decision":"CLARIFICATION","candidateIndex":null,'
+        '{"decision":"CLARIFICATION","intent":"UNCLEAR","candidateIndex":null,'
         '"message":"Bạn muốn xem ca nào?"}'
     )
 
@@ -119,7 +121,9 @@ def test_planner_preserves_a_clarification_without_selecting_a_tool() -> None:
 
 
 def test_manager_create_shift_request_prefers_create_draft_over_read_only_tool() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":0,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request())
 
@@ -129,21 +133,25 @@ def test_manager_create_shift_request_prefers_create_draft_over_read_only_tool()
     assert result.tool_request.arguments == {
         "resource": {"resourceType": "LABORATORY", "resourceId": 1}
     }
-    assert backend.messages is None
+    assert backend.messages is not None
 
 
 def test_create_shift_request_without_authorized_write_tool_refuses_instead_of_reading() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":0,"message":null}')
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":0,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request(include_create=False))
 
     assert result.decision == "REFUSAL"
     assert result.tool_request is None
-    assert backend.messages is None
+    assert backend.messages is not None
 
 
-def test_negated_create_request_selects_available_slots_read_without_model_routing() -> None:
-    backend = StubBackend('{"decision":"CLARIFICATION","candidateIndex":null,"message":"wrong"}')
+def test_negated_create_request_uses_model_read_intent() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request(
         user_input="Không tạo ca. Chỉ cho tôi xem các ca trống của AI Research Lab."
@@ -152,35 +160,43 @@ def test_negated_create_request_selects_available_slots_read_without_model_routi
     assert result.decision == "TOOL_REQUEST"
     assert result.tool_request is not None
     assert result.tool_request.tool_id == "lab.available.slots.read"
-    assert backend.messages is None
+    assert backend.messages is not None
 
 
-def test_explicit_unmanaged_lab_request_refuses_instead_of_substituting_managed_lab() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":1,"message":null}')
+def test_explicit_unmanaged_lab_request_is_deferred_to_spring_validation() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request(
         user_input="Tạo ca tại Lab mà tôi không quản lý ngày 10/09/2026 từ 8 giờ đến 10 giờ."
     ))
 
-    assert result.decision == "REFUSAL"
-    assert result.tool_request is None
-    assert backend.messages is None
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
+    assert backend.messages is not None
 
 
-def test_named_unmanaged_lab_refuses_instead_of_substituting_the_only_managed_lab() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","candidateIndex":1,"message":null}')
+def test_named_unmanaged_lab_is_deferred_to_spring_validation() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request(
         user_input="Tạo ca tại Lab Robotics Lab ngày 10/09/2026 từ 8 giờ đến 10 giờ."
     ))
 
-    assert result.decision == "REFUSAL"
-    assert result.tool_request is None
-    assert backend.messages is None
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
+    assert backend.messages is not None
 
 
 def test_named_authorized_lab_still_selects_the_create_candidate() -> None:
-    backend = StubBackend('{"decision":"REFUSAL","candidateIndex":null,"message":"wrong"}')
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
 
     result = ToolPlanner(backend).plan(_manager_shift_request(
         user_input="Tạo ca tại AI Research Lab ngày 10/09/2026 từ 8 giờ đến 10 giờ."
@@ -189,11 +205,29 @@ def test_named_authorized_lab_still_selects_the_create_candidate() -> None:
     assert result.decision == "TOOL_REQUEST"
     assert result.tool_request is not None
     assert result.tool_request.tool_id == "lab.shift.create.draft"
-    assert backend.messages is None
+    assert backend.messages is not None
+
+
+def test_semantic_create_request_defers_natural_language_fields_to_shift_interpreter() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
+    payload = _manager_shift_request(
+        user_input='{"dialogueVersion":1,"message":"Tạo ca tại AI Research Lab lúc 8 giờ ngày 18/09/2026.",'
+        '"pendingState":null,"history":[]}'
+    )
+
+    result = ToolPlanner(backend).plan(payload)
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
 
 
 def test_pending_shift_field_reply_cannot_be_routed_to_available_slots_read() -> None:
-    backend = StubBackend('{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}')
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
+    )
     payload = _manager_shift_request(
         user_input='{"dialogueVersion":1,"message":"Múi giờ Việt Nam.",'
         '"pendingState":{"labId":1,"date":"2026-09-22","startTime":"09:00:00",'
@@ -224,7 +258,7 @@ def test_pending_shift_explicit_read_request_remains_read_only() -> None:
     assert result.tool_request.tool_id == "lab.available.slots.read"
 
 
-def test_semantic_create_request_for_another_lab_is_refused_before_preview() -> None:
+def test_semantic_create_request_defers_another_lab_name_to_spring_validation() -> None:
     backend = StubBackend(
         '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":1,"message":null}'
     )
@@ -235,14 +269,15 @@ def test_semantic_create_request_for_another_lab_is_refused_before_preview() -> 
 
     result = ToolPlanner(backend).plan(payload)
 
-    assert result.decision == "REFUSAL"
-    assert result.message == "Bạn chỉ có thể tạo ca cho Lab mình đang quản lý."
-    assert result.tool_request is None
+    assert result.decision == "TOOL_REQUEST"
+    assert result.message is None
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.shift.create.draft"
 
 
 def test_existing_shift_update_without_update_tool_is_refused() -> None:
     backend = StubBackend(
-        '{"decision":"CLARIFICATION","intent":"UNCLEAR","candidateIndex":null,"message":"wrong"}'
+        '{"decision":"REFUSAL","intent":"UPDATE_SHIFT","candidateIndex":null,"message":"wrong"}'
     )
     payload = _manager_shift_request(
         user_input='{"dialogueVersion":1,"message":"Đổi ca ngày 03/10/2026 thành bắt đầu lúc 10h.",'
@@ -256,8 +291,10 @@ def test_existing_shift_update_without_update_tool_is_refused() -> None:
     assert result.tool_request is None
 
 
-def test_manager_managed_shift_request_selects_managed_summary_without_model() -> None:
-    backend = StubBackend('{"decision":"CLARIFICATION","candidateIndex":null,"message":"wrong"}')
+def test_manager_managed_shift_request_uses_model_read_intent() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":2,"message":null}'
+    )
     request = _manager_shift_request(
         user_input="Cho tôi xem các ca đang quản lý tại AI Research Lab ngày 13/09/2026."
     )
@@ -279,4 +316,4 @@ def test_manager_managed_shift_request_selects_managed_summary_without_model() -
     assert result.decision == "TOOL_REQUEST"
     assert result.tool_request is not None
     assert result.tool_request.tool_id == "lab.managed.summary"
-    assert backend.messages is None
+    assert backend.messages is not None
