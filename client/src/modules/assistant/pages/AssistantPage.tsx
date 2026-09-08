@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
+import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '../../../shared/components';
@@ -7,6 +7,7 @@ import type { Response } from '../../../shared/types';
 import {
   useAssistantConversation,
   useAssistantConversations,
+  useDeleteAssistantConversation,
   useResolveAssistantAction,
   useUnifiedAssistantChat,
 } from '../hooks';
@@ -138,6 +139,7 @@ export function AssistantPage() {
   const loadedPageCount = useRef(0);
   const chatMutation = useUnifiedAssistantChat();
   const actionMutation = useResolveAssistantAction();
+  const deleteConversationMutation = useDeleteAssistantConversation();
   const conversations = useAssistantConversations();
   const conversation = useAssistantConversation(conversationId);
 
@@ -203,11 +205,25 @@ export function AssistantPage() {
   };
 
   const openConversation = (selectedConversationId: number) => {
-    if (chatMutation.isPending || actionMutation.isPending) return;
+    if (chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending) return;
     if (selectedConversationId === conversationId) return;
     setTurns([]);
     setConversationId(selectedConversationId);
     olderScroll.current = null;
+  };
+
+  const handleDeleteConversation = (selectedConversationId: number) => {
+    if (chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending) return;
+    if (!window.confirm('Xóa lịch sử cuộc trò chuyện này?')) return;
+    deleteConversationMutation.mutate(selectedConversationId, {
+      onSuccess: () => {
+        if (selectedConversationId === conversationId) {
+          setConversationId(null);
+          setTurns([]);
+          olderScroll.current = null;
+        }
+      },
+    });
   };
 
   const handleResolveAction = (turnId: string, suggestionId: number, decision: 'confirm' | 'cancel') => {
@@ -258,25 +274,40 @@ export function AssistantPage() {
 
       <div className="grid min-h-[680px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="border-b border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 md:border-b-0 md:border-r">
-          <Button disabled={chatMutation.isPending || actionMutation.isPending} className="w-full" onClick={startNewConversation} type="button" variant="outline">
+          <Button disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending} className="w-full" onClick={startNewConversation} type="button" variant="outline">
             <Plus aria-hidden="true" className="h-4 w-4" /> Cuộc trò chuyện mới
           </Button>
           <div className="mt-3 max-h-40 space-y-1 overflow-y-auto md:max-h-[600px]">
             {conversations.data?.map((item) => (
-              <button
-                className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+              <div
+                className={`flex w-full items-start gap-2 rounded-md pr-2 text-left text-sm transition ${
                   conversationId === item.id
                     ? 'bg-slate-200 text-slate-950 dark:bg-slate-800 dark:text-white'
                     : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900'
                 }`}
                 key={item.id}
-                disabled={chatMutation.isPending || actionMutation.isPending}
-                onClick={() => openConversation(item.id)}
-                type="button"
               >
-                <MessageSquare aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="line-clamp-2">{item.title}</span>
-              </button>
+                <button
+                  className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left"
+                  disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending}
+                  onClick={() => openConversation(item.id)}
+                  type="button"
+                >
+                  <MessageSquare aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="line-clamp-2">{item.title}</span>
+                </button>
+                <span className="ml-auto mt-1 flex shrink-0 gap-1">
+                  <button
+                    aria-label={`Xóa cuộc trò chuyện: ${item.title}`}
+                    className="rounded p-1 text-slate-400 hover:bg-red-100 hover:text-red-700"
+                    disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending}
+                    onClick={() => handleDeleteConversation(item.id)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                </span>
+              </div>
             ))}
             {conversations.isLoading ? (
               <p className="px-3 py-2 text-xs text-slate-500">Đang tải lịch sử…</p>

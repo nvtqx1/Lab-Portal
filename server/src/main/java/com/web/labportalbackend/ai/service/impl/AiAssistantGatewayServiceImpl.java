@@ -3,6 +3,7 @@ package com.web.labportalbackend.ai.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.web.labportalbackend.ai.client.AiChatResponse;
+import com.web.labportalbackend.ai.config.AiShiftDefaults;
 import com.web.labportalbackend.ai.client.AiGatewayClient;
 import com.web.labportalbackend.ai.client.AiGatewayException;
 import com.web.labportalbackend.ai.client.AiGatewayRequest;
@@ -45,19 +46,22 @@ public class AiAssistantGatewayServiceImpl implements AiAssistantGatewayService 
     private final ObjectMapper objectMapper;
     private final AiAuditUsageService auditUsageService;
     private final AiRagRetrievalService ragRetrievalService;
+    private final AiShiftDefaults shiftDefaults;
 
     public AiAssistantGatewayServiceImpl(AiAssistantAvailabilityService availabilityService,
                                          AiContextFacade contextFacade,
                                          AiGatewayClient gatewayClient,
                                          ObjectMapper objectMapper,
                                          AiAuditUsageService auditUsageService,
-                                         AiRagRetrievalService ragRetrievalService) {
+                                         AiRagRetrievalService ragRetrievalService,
+                                         AiShiftDefaults shiftDefaults) {
         this.availabilityService = availabilityService;
         this.contextFacade = contextFacade;
         this.gatewayClient = gatewayClient;
         this.objectMapper = objectMapper;
         this.auditUsageService = auditUsageService;
         this.ragRetrievalService = ragRetrievalService;
+        this.shiftDefaults = shiftDefaults;
     }
 
     @Override
@@ -126,14 +130,14 @@ public class AiAssistantGatewayServiceImpl implements AiAssistantGatewayService 
             var input = objectMapper.readTree(request.getInput());
             if (input instanceof ObjectNode object && object.path("dialogueVersion").asInt() == 1) {
                 object.put("requestTimeUtc", authorized.builtAt().toString());
-                object.put("defaultTimezone", "Asia/Ho_Chi_Minh");
+                object.put("defaultTimezone", shiftDefaults.timeZoneId());
                 return object.toString();
             }
         } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
             // Compatibility for the existing direct assistant endpoint's plain-text input.
         }
         return "Trusted Spring temporal context: requestTimeUtc=" + authorized.builtAt()
-                + ", defaultTimezone=Asia/Ho_Chi_Minh. Resolve relative dates such as today or tomorrow from "
+                + ", defaultTimezone=" + shiftDefaults.timeZoneId() + ". Resolve relative dates such as today or tomorrow from "
                 + "this instant after converting it to the timezone explicitly supplied in the user request, "
                 + "or to defaultTimezone when the request does not specify one. Never use a training example or "
                 + "training cutoff as the current date. User request: " + request.getInput();

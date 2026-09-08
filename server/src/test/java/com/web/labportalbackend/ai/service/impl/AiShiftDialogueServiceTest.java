@@ -2,6 +2,7 @@ package com.web.labportalbackend.ai.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.labportalbackend.ai.context.AiLabContext;
+import com.web.labportalbackend.ai.config.AiShiftDefaults;
 import com.web.labportalbackend.ai.enums.AiAssistantSystemRole;
 import com.web.labportalbackend.ai.service.AiCurrentActor;
 import com.web.labportalbackend.ai.service.AiCurrentActorProvider;
@@ -20,7 +21,8 @@ class AiShiftDialogueServiceTest {
     private final LaboratoryRepository labs = mock(LaboratoryRepository.class);
     private final AiCurrentActorProvider actors = mock(AiCurrentActorProvider.class);
     private final AiShiftDialogueService service = new AiShiftDialogueService(mapper, labs, actors,
-            java.time.Clock.fixed(java.time.Instant.parse("2026-09-07T00:00:00Z"), java.time.ZoneOffset.UTC));
+            java.time.Clock.fixed(java.time.Instant.parse("2026-09-07T00:00:00Z"), java.time.ZoneOffset.UTC),
+            new AiShiftDefaults("Asia/Ho_Chi_Minh"));
 
     @BeforeEach
     void setup() {
@@ -47,7 +49,7 @@ class AiShiftDialogueServiceTest {
         assertNull(result.question());
         assertEquals("2026-09-14T09:00:00", result.draft().path("startLocalDateTime").asText());
         assertEquals("2026-09-14T11:00:00", result.draft().path("endLocalDateTime").asText());
-        assertEquals(20, result.draft().path("capacity").asInt());
+        assertEquals(30, result.draft().path("capacity").asInt());
     }
 
     @Test
@@ -118,7 +120,7 @@ class AiShiftDialogueServiceTest {
     }
 
     @Test
-    void defaultCapacitySurvivesTimeFollowUpAndCanBeOverridden() {
+    void fixedCapacitySurvivesFollowUpAndRejectsUserOverride() {
         var first = service.resolve(10L, patch("NEW").putNull("requestedLabName")
                 .put("date", "2026-09-14").put("startTime", "09:00").toString(), null);
         assertEquals(30, first.state().capacity());
@@ -126,21 +128,51 @@ class AiShiftDialogueServiceTest {
                 .put("endTime", "11:00").toString(), first.state());
         assertNotNull(second.draft());
         var third = service.resolve(10L, patch("CONTINUE").put("capacity", 15).toString(), second.state());
-        assertEquals(15, third.draft().path("capacity").asInt());
-        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER, third.state().capacitySource());
+        assertNull(third.draft());
+        assertEquals(30, third.state().capacity());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.DEFAULT,
+                third.state().capacitySource());
+        assertTrue(third.question().contains("30"));
     }
 
     @Test
-    void invalidUserCapacityAndClearedCapacityNeverSilentlyDefaultOnFollowUp() {
+    void fixedTimezoneRejectsUserOverride() {
+        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
+                .put("startTime", "09:00").put("endTime", "11:00")
+                .put("timeZone", "UTC").toString(), null);
+
+        assertNull(result.draft());
+        assertEquals("Asia/Ho_Chi_Minh", result.state().timeZone());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.DEFAULT,
+                result.state().timeZoneSource());
+        assertTrue(result.question().contains("Asia/Ho_Chi_Minh"));
+    }
+
+    @Test
+    void matchingFixedCapacityAndTimezoneAreAcceptedAsComparisons() {
+        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
+                .put("startTime", "09:00").put("endTime", "11:00")
+                .put("capacity", 30).put("timeZone", "Asia/Ho_Chi_Minh").toString(), null);
+
+        assertNotNull(result.draft());
+        assertEquals(30, result.draft().path("capacity").asInt());
+        assertEquals("Asia/Ho_Chi_Minh", result.draft().path("timeZone").asText());
+    }
+
+    @Test
+    void rejectedCapacityOverrideFallsBackToFixedValueWhenOmittedOnFollowUp() {
         var invalid = service.resolve(10L, patch("NEW").put("capacity", -5).toString(), null);
+        assertNull(invalid.draft());
+        assertEquals(30, invalid.state().capacity());
+        assertTrue(invalid.question().contains("30"));
         var followUp = service.resolve(10L, patch("CONTINUE").put("date", "2026-09-14")
                 .put("startTime", "09:00").put("endTime", "11:00").toString(), invalid.state());
-        assertNull(followUp.draft());
-        assertEquals(-5, followUp.state().capacity());
+        assertNotNull(followUp.draft());
+        assertEquals(30, followUp.draft().path("capacity").asInt());
         var cleared = patch("CONTINUE");
         cleared.withArray("clearFields").add("capacity");
         var result = service.resolve(10L, cleared.toString(), followUp.state());
-        assertNull(service.resolve(10L, patch("CONTINUE").toString(), result.state()).draft());
+        assertEquals(30, result.draft().path("capacity").asInt());
     }
 
     @Test

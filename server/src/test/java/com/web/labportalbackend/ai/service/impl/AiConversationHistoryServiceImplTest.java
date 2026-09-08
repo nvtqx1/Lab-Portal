@@ -43,13 +43,15 @@ class AiConversationHistoryServiceImplTest {
     @Mock private com.web.labportalbackend.ai.repository.AiActionSuggestionRepository suggestions;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final com.web.labportalbackend.ai.config.AiShiftDefaults defaults =
+            new com.web.labportalbackend.ai.config.AiShiftDefaults("Asia/Ho_Chi_Minh");
     private AiConversationHistoryServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new AiConversationHistoryServiceImpl(
                 conversationRepository, messageRepository, actorProvider, objectMapper, suggestions,
-                Clock.fixed(Instant.parse("2026-09-23T03:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-09-23T03:00:00Z"), ZoneOffset.UTC), defaults);
     }
 
     @Test
@@ -60,6 +62,7 @@ class AiConversationHistoryServiceImplTest {
             context.getBeanFactory().registerSingleton("actorProvider", actorProvider);
             context.getBeanFactory().registerSingleton("objectMapper", objectMapper);
             context.getBeanFactory().registerSingleton("suggestions", suggestions);
+            context.getBeanFactory().registerSingleton("defaults", defaults);
             context.registerBean(AiConversationHistoryServiceImpl.class);
 
             context.refresh();
@@ -186,6 +189,22 @@ class AiConversationHistoryServiceImplTest {
                 .thenReturn(Optional.empty());
 
         assertThrows(EntityNotFoundException.class, () -> service.getCurrentUserConversation(99L));
+    }
+
+    @Test
+    void deletingConversationSoftDeletesOnlyOwnedConversation() {
+        var conversation = conversation(41L, 7L);
+        when(actorProvider.requireCurrentActor()).thenReturn(
+                new AiCurrentActor(7L, AiAssistantSystemRole.STUDENT));
+        when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
+                .thenReturn(Optional.of(conversation));
+
+        service.deleteCurrentUserConversation(41L);
+
+        org.junit.jupiter.api.Assertions.assertFalse(conversation.getActive());
+        org.junit.jupiter.api.Assertions.assertTrue(conversation.getDeleted());
+        verify(conversationRepository).save(conversation);
+        verifyNoInteractions(messageRepository);
     }
 
     @Test

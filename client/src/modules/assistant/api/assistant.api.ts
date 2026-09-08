@@ -41,6 +41,10 @@ export async function getAssistantConversation(
   return response.data.data;
 }
 
+export async function deleteAssistantConversation(conversationId: number): Promise<void> {
+  await apiClient.delete(`/api/ai/conversations/${conversationId}`);
+}
+
 export async function chatWithUnifiedAssistant(request: UnifiedChatRequest): Promise<UnifiedChatResponse> {
   const requestId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}`;
   const response = await apiClient.post<Response<UnifiedChatResponse>>(

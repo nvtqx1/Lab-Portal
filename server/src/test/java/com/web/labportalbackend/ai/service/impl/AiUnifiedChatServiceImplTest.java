@@ -288,7 +288,8 @@ class AiUnifiedChatServiceImplTest {
         when(labs.findAiContextLaboratory(7L, 10L, "LAB_MANAGER")).thenReturn(java.util.Optional.of(
                 new com.web.labportalbackend.ai.context.AiLabContext.Laboratory(10L, "AI Research Lab", null, 30)));
         var realDialogue = new AiShiftDialogueService(OBJECT_MAPPER, labs, actors,
-                java.time.Clock.fixed(Instant.parse("2026-09-07T00:00:00Z"), java.time.ZoneOffset.UTC));
+                java.time.Clock.fixed(Instant.parse("2026-09-07T00:00:00Z"), java.time.ZoneOffset.UTC),
+                new com.web.labportalbackend.ai.config.AiShiftDefaults("Asia/Ho_Chi_Minh"));
         service = new AiUnifiedChatServiceImpl(candidateCatalog, planningClient, toolRegistry, assistantGatewayService,
                 actionSuggestionService, conversationHistoryService, OBJECT_MAPPER, realDialogue);
         var state = new java.util.concurrent.atomic.AtomicReference<com.web.labportalbackend.ai.service.AiShiftDialogueState>();
