@@ -24,6 +24,7 @@ import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidator;
 import com.web.labportalbackend.booking.dto.request.CreateTimeSlotRequest;
 import com.web.labportalbackend.booking.dto.response.TimeSlotResponse;
 import com.web.labportalbackend.booking.service.TimeSlotService;
+import com.web.labportalbackend.lab.repository.LaboratoryRepository;
 import com.web.labportalbackend.common.enums.TimeSlotStatus;
 import com.web.labportalbackend.common.exception.ResourceNotFoundException;
 import java.time.DateTimeException;
@@ -50,6 +51,7 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
     private final AiCurrentActorProvider currentActorProvider;
     private final AiSuggestionPayloadValidator payloadValidator;
     private final TimeSlotService timeSlotService;
+    private final LaboratoryRepository laboratoryRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -58,20 +60,24 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
                                          AiCurrentActorProvider currentActorProvider,
                                          AiSuggestionPayloadValidator payloadValidator,
                                          TimeSlotService timeSlotService,
+                                         LaboratoryRepository laboratoryRepository,
                                          ObjectMapper objectMapper) {
-        this(repository, currentActorProvider, payloadValidator, timeSlotService, objectMapper, Clock.systemUTC());
+        this(repository, currentActorProvider, payloadValidator, timeSlotService, laboratoryRepository, objectMapper,
+                Clock.systemUTC());
     }
 
     AiActionSuggestionServiceImpl(AiActionSuggestionRepository repository,
                                   AiCurrentActorProvider currentActorProvider,
                                   AiSuggestionPayloadValidator payloadValidator,
                                   TimeSlotService timeSlotService,
+                                  LaboratoryRepository laboratoryRepository,
                                   ObjectMapper objectMapper,
                                   Clock clock) {
         this.repository = repository;
         this.currentActorProvider = currentActorProvider;
         this.payloadValidator = payloadValidator;
         this.timeSlotService = timeSlotService;
+        this.laboratoryRepository = laboratoryRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -84,6 +90,11 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
                 || !AiAssistantKey.LAB_ASSISTANT.name().equals(generated.assistantKey())) {
             throw invalidSuggestion();
         }
+        if (!laboratoryRepository.existsAiContextManagedLab(actor.id(), authorizedLabId, actor.role().name())) {
+            throw new AccessDeniedException("Lab is outside the manager's scope");
+        }
+        var lab = laboratoryRepository.findAiContextLaboratory(actor.id(), authorizedLabId, actor.role().name())
+                .orElseThrow(() -> new AccessDeniedException("Lab is outside the manager's scope"));
         JsonNode payload = parse(generated.answer());
         payloadValidator.validate(new AiSuggestionResponse(
                 generated.assistantKey(), CREATE_LAB_SHIFT, 1, payload, 1.0, "Validated action preview"));
@@ -112,7 +123,7 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
                 .confirmationStatus(AiActionConfirmationStatus.PENDING)
                 .executionStatus(AiActionExecutionStatus.NOT_REQUESTED)
                 .build());
-        return preview(saved.getId(), stored);
+        return preview(saved.getId(), stored, lab.name());
     }
 
     @Override
@@ -253,9 +264,9 @@ public class AiActionSuggestionServiceImpl implements AiActionSuggestionService 
         }
     }
 
-    private static AiActionPreviewResponse preview(Long id, StoredLabShift value) {
+    private static AiActionPreviewResponse preview(Long id, StoredLabShift value, String labName) {
         return new AiActionPreviewResponse(id, CREATE_LAB_SHIFT, "AWAITING_CONFIRMATION",
-                value.labId(), value.startTime(), value.endTime(), value.capacity());
+                value.labId(), labName, value.startTime(), value.endTime(), value.capacity());
     }
 
     private static AiSuggestionPayloadValidationException invalidSuggestion() {

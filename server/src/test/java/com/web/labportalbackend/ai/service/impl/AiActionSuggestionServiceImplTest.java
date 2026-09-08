@@ -27,6 +27,8 @@ import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidator;
 import com.web.labportalbackend.ai.service.AiSuggestionPayloadValidationException;
 import com.web.labportalbackend.booking.dto.response.TimeSlotResponse;
 import com.web.labportalbackend.booking.service.TimeSlotService;
+import com.web.labportalbackend.ai.context.AiLabContext;
+import com.web.labportalbackend.lab.repository.LaboratoryRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -45,6 +47,7 @@ class AiActionSuggestionServiceImplTest {
     @Mock private AiCurrentActorProvider currentActorProvider;
     @Mock private AiSuggestionPayloadValidator payloadValidator;
     @Mock private TimeSlotService timeSlotService;
+    @Mock private LaboratoryRepository laboratoryRepository;
 
     private AiActionSuggestionServiceImpl service;
 
@@ -52,7 +55,7 @@ class AiActionSuggestionServiceImplTest {
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         service = new AiActionSuggestionServiceImpl(
-                repository, currentActorProvider, payloadValidator, timeSlotService, objectMapper,
+                repository, currentActorProvider, payloadValidator, timeSlotService, laboratoryRepository, objectMapper,
                 Clock.fixed(Instant.parse("2026-09-06T08:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -60,6 +63,9 @@ class AiActionSuggestionServiceImplTest {
     void createLabShiftStoresPreviewWithoutWritingTimeSlot() {
         when(currentActorProvider.requireCurrentActor())
                 .thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(laboratoryRepository.existsAiContextManagedLab(7L, 10L, "LAB_MANAGER")).thenReturn(true);
+        when(laboratoryRepository.findAiContextLaboratory(7L, 10L, "LAB_MANAGER"))
+                .thenReturn(java.util.Optional.of(new AiLabContext.Laboratory(10L, "AI Research Lab", null, 30)));
         doAnswer(invocation -> {
             AiActionSuggestionEntity entity = invocation.getArgument(0);
             entity.setId(41L);
@@ -79,6 +85,7 @@ class AiActionSuggestionServiceImplTest {
         assertEquals(41L, preview.suggestionId());
         assertEquals("CREATE_LAB_SHIFT", preview.actionType());
         assertEquals(10L, preview.labId());
+        assertEquals("AI Research Lab", preview.labName());
         assertEquals(20, preview.capacity());
         assertEquals(Instant.parse("2026-09-07T08:00:00Z"), preview.startTime());
         assertEquals(Instant.parse("2026-09-07T10:00:00Z"), preview.endTime());
@@ -90,6 +97,9 @@ class AiActionSuggestionServiceImplTest {
     void createLabShiftRejectsModelDraftWhoseStartTimeIsAlreadyPast() {
         when(currentActorProvider.requireCurrentActor())
                 .thenReturn(new AiCurrentActor(7L, AiAssistantSystemRole.LAB_MANAGER));
+        when(laboratoryRepository.existsAiContextManagedLab(7L, 10L, "LAB_MANAGER")).thenReturn(true);
+        when(laboratoryRepository.findAiContextLaboratory(7L, 10L, "LAB_MANAGER"))
+                .thenReturn(java.util.Optional.of(new AiLabContext.Laboratory(10L, "AI Research Lab", null, 30)));
         AiAssistantChatResponse generated = new AiAssistantChatResponse(
                 "LAB_ASSISTANT",
                 "{\"kind\":\"LAB_SHIFT_CREATE_DRAFT\",\"labRef\":10,"

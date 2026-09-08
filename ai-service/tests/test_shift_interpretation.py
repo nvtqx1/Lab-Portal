@@ -138,3 +138,23 @@ def test_empty_continuation_patch_is_retried_instead_of_repeating_question():
         pendingState=dict(labId=10, endTime=None), missingFields=["endTime"], lastAskedField="endTime")), 10)
     assert result.metadata == {"safeRefusal": True}
     assert backend.calls == 2
+
+
+def test_extraction_prompt_covers_reported_lab_and_time_boundaries():
+    backend = Backend(json.dumps(patch(
+        requestedLabName="AI Research Lab", mode="NEW", date="2026-09-25",
+        startTime="08:00:00", endTime=None,
+    )))
+    envelope = dict(
+        dialogueVersion=1,
+        message="Tạo ca tại AI Research Lab lúc 8 giờ ngày 25/09/2026.",
+        pendingState=None,
+        temporalContext=dict(currentDate="2026-09-23", defaultTimeZone="Asia/Ho_Chi_Minh"),
+    )
+
+    interpret_shift(backend, json.dumps(envelope), 10)
+
+    prompt = backend.messages[0]["content"]
+    assert "AI Research Lab lúc 8 giờ" in prompt
+    assert "Tạo ca mới ngày 04/10 từ 13h đến 15h" in prompt
+    assert "Tạo ca ngày 26/09/2026, kết thúc lúc 11h" in prompt

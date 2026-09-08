@@ -83,7 +83,7 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
         <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="flex items-center gap-2 font-semibold"><CalendarClock aria-hidden="true" className="h-4 w-4" /> Xem trước ca Lab</p>
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div><dt className="text-xs opacity-70">Lab</dt><dd>#{response.actionPreview.labId}</dd></div>
+            <div><dt className="text-xs opacity-70">Lab</dt><dd>{response.actionPreview.labName ?? `#${response.actionPreview.labId}`}</dd></div>
             <div><dt className="text-xs opacity-70">Sức chứa</dt><dd>{response.actionPreview.capacity} người</dd></div>
             <div><dt className="text-xs opacity-70">Bắt đầu</dt><dd>{new Date(response.actionPreview.startTime).toLocaleString('vi-VN')}</dd></div>
             <div><dt className="text-xs opacity-70">Kết thúc</dt><dd>{new Date(response.actionPreview.endTime).toLocaleString('vi-VN')}</dd></div>

@@ -15,11 +15,20 @@ class ShiftInterpretation(BaseModel):
 
     kind: Literal["LAB_SHIFT_CREATE_INTERPRETATION"]
     labRef: StrictInt = Field(gt=0)
-    requestedLabName: str | None = Field(max_length=255)
-    mode: Literal["NEW", "CONTINUE"]
-    date: str | None = Field(max_length=10)
-    startTime: str | None = Field(max_length=8)
-    endTime: str | None = Field(max_length=8)
+    requestedLabName: str | None = Field(
+        max_length=255,
+        description="Exact Lab name only; exclude surrounding date, time, capacity, prepositions and punctuation.",
+    )
+    mode: Literal["NEW", "CONTINUE"] = Field(
+        description="NEW for an independent create request even when pendingState exists; otherwise CONTINUE.",
+    )
+    date: str | None = Field(max_length=10, description="Explicit requested date normalized to YYYY-MM-DD.")
+    startTime: str | None = Field(
+        max_length=8, description="Explicit start time only; never infer it from an end-time expression."
+    )
+    endTime: str | None = Field(
+        max_length=8, description="Explicit end time only; never copy it into startTime."
+    )
     capacity: StrictInt | None
     timeZone: str | None = Field(max_length=100)
     clearFields: list[Literal["date", "startTime", "endTime", "capacity", "timeZone"]]
@@ -59,6 +68,15 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             "requestedLabName must preserve the Lab name mentioned in the latest message, even if it differs "
             "from the selected Lab; use null only when no Lab name is mentioned. Do not substitute a name. "
             "When pendingState.labConfirmed is false, a reply giving the Lab name is CONTINUE. "
+            "The temporalContext.currentDate is the authoritative date for resolving a date without a year; "
+            "temporalContext.defaultTimeZone is context only, not a user-supplied patch. "
+            "Apply these boundary examples exactly: "
+            "'Tạo ca tại AI Research Lab lúc 8 giờ ngày 25/09/2026.' means requestedLabName='AI Research Lab', "
+            "mode=NEW, date=2026-09-25, startTime=08:00:00, endTime=null. "
+            "With currentDate=2026-09-23, 'Tạo ca mới ngày 04/10 từ 13h đến 15h.' means mode=NEW, "
+            "date=2026-10-04, startTime=13:00:00, endTime=15:00:00. "
+            "Even when pendingState exists, 'Tạo ca ngày 26/09/2026, kết thúc lúc 11h.' is NEW and means "
+            "date=2026-09-26, startTime=null, endTime=11:00:00; never inherit or invent 08:00:00. "
             "Spring selects the manager's Lab and supplies capacity/timezone defaults. Omission of these "
             "fields is not a reason to clear them. A short reply specifying a number of people updates capacity. "
             "Never emit zero as a placeholder for an omitted capacity. Preserve explicitly invalid user values "

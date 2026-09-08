@@ -23,6 +23,9 @@ import com.web.labportalbackend.ai.service.AiCurrentActorProvider;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.Optional;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,7 +46,17 @@ class AiConversationHistoryServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new AiConversationHistoryServiceImpl(
-                conversationRepository, messageRepository, actorProvider, objectMapper, suggestions);
+                conversationRepository, messageRepository, actorProvider, objectMapper, suggestions,
+                Clock.fixed(Instant.parse("2026-09-23T03:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @Test
+    void preparedInputIncludesSpringOwnedTemporalContext() throws Exception {
+        var envelope = objectMapper.readTree(service.prepareInput(null, "Tạo ca ngày 04/10 từ 13h đến 15h.")
+                .effectiveInput());
+
+        assertEquals("2026-09-23", envelope.path("temporalContext").path("currentDate").asText());
+        assertEquals("Asia/Ho_Chi_Minh", envelope.path("temporalContext").path("defaultTimeZone").asText());
     }
 
     @Test
@@ -222,7 +235,7 @@ class AiConversationHistoryServiceImplTest {
         when(conversationRepository.findByIdAndUserIdAndActiveTrueAndDeletedFalse(41L, 7L))
                 .thenReturn(Optional.of(conversation(41L, 7L)));
         var preview = new com.web.labportalbackend.ai.dto.response.AiActionPreviewResponse(55L, "CREATE_LAB_SHIFT",
-                "AWAITING_CONFIRMATION", 10L, java.time.Instant.parse("2026-09-14T02:00:00Z"),
+                "AWAITING_CONFIRMATION", 10L, "AI Research Lab", java.time.Instant.parse("2026-09-14T02:00:00Z"),
                 java.time.Instant.parse("2026-09-14T04:00:00Z"), 30);
         var response = new AiUnifiedChatResponse(41L, AiUnifiedChatResponseType.ACTION_PREVIEW, "LAB_ASSISTANT",
                 "Review", 1, 1, List.of(), preview, null);
