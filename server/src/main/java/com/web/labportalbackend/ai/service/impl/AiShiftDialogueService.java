@@ -87,10 +87,28 @@ public class AiShiftDialogueService {
         String date = value("date", patch.date(), prior.date(), patch.clearFields());
         String start = value("startTime", patch.startTime(), prior.startTime(), patch.clearFields());
         String end = value("endTime", patch.endTime(), prior.endTime(), patch.clearFields());
-        String zone = defaults.timeZoneId();
-        Integer capacity = lab.capacity();
-        ValueSource capacitySource = ValueSource.DEFAULT;
-        ValueSource zoneSource = ValueSource.DEFAULT;
+        boolean capacityCleared = patch.clearFields().contains("capacity");
+        boolean zoneCleared = patch.clearFields().contains("timeZone");
+        Integer capacity = capacityCleared
+                ? lab.capacity()
+                : patch.capacity() != null
+                ? patch.capacity()
+                : continuing && prior.capacitySource() == ValueSource.USER
+                ? prior.capacity()
+                : lab.capacity();
+        String zone = zoneCleared
+                ? defaults.timeZoneId()
+                : patch.timeZone() != null
+                ? patch.timeZone()
+                : continuing && prior.timeZoneSource() == ValueSource.USER
+                ? prior.timeZone()
+                : defaults.timeZoneId();
+        ValueSource capacitySource = capacityCleared
+                ? ValueSource.CLEARED : patch.capacity() != null || continuing && prior.capacitySource() == ValueSource.USER
+                ? ValueSource.USER : ValueSource.DEFAULT;
+        ValueSource zoneSource = zoneCleared
+                ? ValueSource.CLEARED : patch.timeZone() != null || continuing && prior.timeZoneSource() == ValueSource.USER
+                ? ValueSource.USER : ValueSource.DEFAULT;
         List<String> missing = new ArrayList<>();
         date = validDate(date);
         start = validTime(start);
@@ -102,18 +120,18 @@ public class AiShiftDialogueService {
             end = null;
             missing.add("giờ kết thúc sau giờ bắt đầu");
         }
-        if (patch.capacity() != null && !patch.capacity().equals(capacity)) {
-            missing.add("sức chứa cố định của Lab là " + capacity);
-        }
-        if (patch.timeZone() != null && !sameZone(patch.timeZone(), defaults.timeZone())) {
-            missing.add("múi giờ cố định của hệ thống là " + zone);
-        }
         if (capacity == null || capacity <= 0) {
-            throw new IllegalStateException("Managed Lab capacity is invalid");
+            missing.add("sức chứa lớn hơn 0");
         }
-        if (date != null && start != null) {
+        ZoneId selectedZone = validZone(zone);
+        if (selectedZone == null) {
+            missing.add("múi giờ hợp lệ");
+        } else {
+            zone = selectedZone.getId();
+        }
+        if (date != null && start != null && selectedZone != null) {
             var local = LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(start));
-            var offsets = defaults.timeZone().getRules().getValidOffsets(local);
+            var offsets = selectedZone.getRules().getValidOffsets(local);
             if (offsets.size() != 1) {
                 missing.add("giờ bắt đầu không mơ hồ trong múi giờ đã chọn");
                 start = null;
@@ -158,11 +176,11 @@ public class AiShiftDialogueService {
         catch (DateTimeException | NullPointerException exception) { return null; }
     }
 
-    private static boolean sameZone(String supplied, ZoneId expected) {
+    private static ZoneId validZone(String supplied) {
         try {
-            return ZoneId.of(supplied).equals(expected);
+            return ZoneId.of(supplied);
         } catch (DateTimeException | NullPointerException exception) {
-            return false;
+            return null;
         }
     }
 

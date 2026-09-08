@@ -120,32 +120,29 @@ class AiShiftDialogueServiceTest {
     }
 
     @Test
-    void fixedCapacitySurvivesFollowUpAndRejectsUserOverride() {
+    void explicitCapacityOverridesDefaultAndSurvivesFollowUp() {
         var first = service.resolve(10L, patch("NEW").putNull("requestedLabName")
-                .put("date", "2026-09-14").put("startTime", "09:00").toString(), null);
-        assertEquals(30, first.state().capacity());
+                .put("date", "2026-09-14").put("startTime", "09:00").put("capacity", 15).toString(), null);
+        assertEquals(15, first.state().capacity());
         var second = service.resolve(10L, patch("CONTINUE").putNull("requestedLabName")
                 .put("endTime", "11:00").toString(), first.state());
         assertNotNull(second.draft());
-        var third = service.resolve(10L, patch("CONTINUE").put("capacity", 15).toString(), second.state());
-        assertNull(third.draft());
-        assertEquals(30, third.state().capacity());
-        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.DEFAULT,
-                third.state().capacitySource());
-        assertTrue(third.question().contains("30"));
+        assertEquals(15, second.draft().path("capacity").asInt());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
+                second.state().capacitySource());
     }
 
     @Test
-    void fixedTimezoneRejectsUserOverride() {
+    void explicitTimezoneOverridesDefaultAndIsUsedByDraft() {
         var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
                 .put("startTime", "09:00").put("endTime", "11:00")
-                .put("timeZone", "UTC").toString(), null);
+                .put("timeZone", "Asia/Bangkok").toString(), null);
 
-        assertNull(result.draft());
-        assertEquals("Asia/Ho_Chi_Minh", result.state().timeZone());
-        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.DEFAULT,
+        assertNotNull(result.draft());
+        assertEquals("Asia/Bangkok", result.state().timeZone());
+        assertEquals("Asia/Bangkok", result.draft().path("timeZone").asText());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
                 result.state().timeZoneSource());
-        assertTrue(result.question().contains("Asia/Ho_Chi_Minh"));
     }
 
     @Test
@@ -160,19 +157,33 @@ class AiShiftDialogueServiceTest {
     }
 
     @Test
-    void rejectedCapacityOverrideFallsBackToFixedValueWhenOmittedOnFollowUp() {
-        var invalid = service.resolve(10L, patch("NEW").put("capacity", -5).toString(), null);
+    void invalidCapacityIsRetainedUntilUserChangesOrClearsIt() {
+        var invalid = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
+                .put("startTime", "09:00").put("endTime", "11:00").put("capacity", -5).toString(), null);
         assertNull(invalid.draft());
-        assertEquals(30, invalid.state().capacity());
-        assertTrue(invalid.question().contains("30"));
-        var followUp = service.resolve(10L, patch("CONTINUE").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00").toString(), invalid.state());
-        assertNotNull(followUp.draft());
-        assertEquals(30, followUp.draft().path("capacity").asInt());
+        assertEquals(-5, invalid.state().capacity());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
+                invalid.state().capacitySource());
         var cleared = patch("CONTINUE");
         cleared.withArray("clearFields").add("capacity");
-        var result = service.resolve(10L, cleared.toString(), followUp.state());
+        var result = service.resolve(10L, cleared.toString(), invalid.state());
+        assertNotNull(result.draft());
         assertEquals(30, result.draft().path("capacity").asInt());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.CLEARED,
+                result.state().capacitySource());
+    }
+
+    @Test
+    void invalidTimezoneIsRejectedWithoutReplacingItWithTheDefault() {
+        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
+                .put("startTime", "09:00").put("endTime", "11:00")
+                .put("timeZone", "Not/A_Zone").toString(), null);
+
+        assertNull(result.draft());
+        assertEquals("Not/A_Zone", result.state().timeZone());
+        assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
+                result.state().timeZoneSource());
+        assertTrue(result.question().contains("múi giờ hợp lệ"));
     }
 
     @Test

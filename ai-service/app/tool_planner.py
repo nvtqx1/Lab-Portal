@@ -64,7 +64,7 @@ class ToolPlanner:
                 "the shift interpreter extracts those fields and Spring validates them. "
                 "If a manager has one authorized create candidate, select it even when the user omits, abbreviates, "
                 "misspells, or names the Lab differently; this does not authorize that name because Spring checks it. "
-                "Spring supplies default capacity and timezone. "
+                "Spring supplies default capacity and timezone, while explicit user values may override those defaults. "
                 "Never turn creation into a read. "
                 "For managed shifts choose lab.managed.summary; for available shifts choose lab.available.slots.read. "
                 "Classify intent independently of available tools: CREATE_SHIFT, UPDATE_SHIFT, READ, "

@@ -159,6 +159,9 @@ def test_extraction_prompt_does_not_require_or_invent_a_lab_name():
     assert "requestedLabName is optional" in prompt
     assert "generic word 'Lab' alone is not a Lab name" in prompt
     assert "day/month[/year]" in prompt
+    assert "never month/day" in prompt
+    assert "message containing only an end-time expression" in prompt
     assert "next occurrence on or after temporalContext.currentDate" in prompt
+    assert "defaults, not fixed restrictions" in prompt
     assert "AI Research Lab" not in prompt
     assert json.loads(backend.messages[1]["content"])["message"] == envelope["message"]
