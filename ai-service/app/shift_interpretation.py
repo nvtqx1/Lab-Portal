@@ -22,17 +22,38 @@ class ShiftInterpretation(BaseModel):
     mode: Literal["NEW", "CONTINUE"] = Field(
         description="NEW for an independent create request even when pendingState exists; otherwise CONTINUE.",
     )
-    date: str | None = Field(max_length=10, description="Explicit requested date normalized to YYYY-MM-DD.")
-    startTime: str | None = Field(
-        max_length=8, description="Explicit start time only; never infer it from an end-time expression."
+    dateMention: "ShiftDateMention | None" = Field(
+        description="Calendar components explicitly supplied by the user. Keep an omitted year null."
     )
-    endTime: str | None = Field(
-        max_length=8, description="Explicit end time only; never copy it into startTime."
+    timeMentions: list["ShiftTimeMention"] = Field(
+        max_length=2,
+        description="Explicit wall-clock mentions classified by their semantic role in the request.",
     )
     capacity: StrictInt | None
     timeZone: str | None = Field(max_length=100)
     clearFields: list[Literal["date", "startTime", "endTime", "capacity", "timeZone"]]
     requiresHumanReview: Literal[True]
+
+
+class ShiftDateMention(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    day: StrictInt = Field(ge=1, le=31)
+    month: StrictInt = Field(ge=1, le=12)
+    year: StrictInt | None = Field(default=None, ge=1, le=9999)
+
+
+class ShiftTimeMention(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    role: Literal["START", "END"] = Field(
+        description="START for the beginning boundary; END for the finishing or upper boundary."
+    )
+    hour: StrictInt = Field(ge=0, le=23)
+    minute: StrictInt = Field(ge=0, le=59)
+
+
+ShiftInterpretation.model_rebuild()
 
 
 def dialogue_input(value: str) -> dict | None:
@@ -70,15 +91,13 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             "substitute, or copy a Lab name from candidate metadata or pending state. When a proper name is present, "
             "extract only its shortest exact noun phrase and stop before date, time, capacity, or punctuation. "
             "When pendingState.labConfirmed is false, a reply giving the Lab name is CONTINUE. "
-            "The temporalContext.currentDate is the authoritative date for resolving a date without a year; "
+            "The temporalContext.currentDate is context for interpreting relative language only; "
             "temporalContext.defaultTimeZone is context only, not a user-supplied patch. "
-            "Interpret Vietnamese numeric dates strictly as day/month[/year], never month/day. Before returning, "
-            "self-check that the output date day equals the number before the first slash and its month equals the "
-            "number after that slash. When the year is omitted, choose the next occurrence on or after "
-            "temporalContext.currentDate. The Vietnamese cues 'bắt đầu' and 'từ' identify startTime; the cues "
-            "'kết thúc', 'đến' and 'tới' identify endTime. A message containing only an end-time expression must "
-            "leave startTime null, and a message containing only a start-time expression must leave endTime null. "
-            "Never copy one time into the other. "
+            "Extract calendar components without reordering or formatting them. Vietnamese slash dates use "
+            "day/month[/year]; keep year null when it is omitted because Spring resolves the applicable year. "
+            "For every explicit wall-clock expression, classify its grammatical meaning: START when it defines "
+            "the beginning boundary and END when it defines the finishing or upper boundary. Do not convert an "
+            "END expression into START merely because no start was supplied, and never duplicate a time across roles. "
             "An independent create request is NEW even when pendingState exists and must not inherit omitted values. "
             "Spring selects the manager's Lab and owns the fixed Lab name. Capacity and timezone are defaults, not "
             "fixed restrictions: return capacity or timeZone when the latest message explicitly states a new value "
@@ -86,9 +105,10 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             "Omission of these fields is not a reason to clear them. "
             "Never emit zero as a placeholder for an omitted capacity. Preserve explicitly invalid user values "
             "for Spring validation. Source fields in pendingState are read-only metadata, not output fields. "
-            "Do not invent missing values or fill defaults. Normalize date to YYYY-MM-DD and wall-clock "
-            "times to HH:mm:ss without UTC conversion. Resolve relative dates from Spring temporal context; "
-            "never use training dates. For ambiguity leave a field null (or clear it on CONTINUE). "
+            "Do not invent missing values or fill defaults. Return numerical date/time components only; Spring "
+            "owns calendar construction, year rollover, timezone handling and final formatting. Resolve relative "
+            "language from Spring temporal context; never use training dates. For ambiguity leave dateMention null, "
+            "omit the uncertain time mention, or clear the affected field on CONTINUE. "
             f"labRef must equal {lab_id}; requiresHumanReview must be true. No DB action has occurred."
         )},
         {"role": "user", "content": user_input},
@@ -105,9 +125,8 @@ def interpret_shift(backend: GenerationBackend, user_input: str, lab_id: int) ->
             if envelope is not None and result.mode == "CONTINUE":
                 if not envelope.get("pendingState"):
                     raise ValueError("No active request to continue")
-                if not result.clearFields and all(getattr(result, field) is None for field in (
-                    "requestedLabName", "date", "startTime", "endTime", "capacity", "timeZone"
-                )):
+                if not result.clearFields and result.requestedLabName is None and result.dateMention is None \
+                        and not result.timeMentions and result.capacity is None and result.timeZone is None:
                     raise ValueError("Continuation did not extract any new information")
             return ChatResponse(
                 assistant_key=AssistantKey.LAB_ASSISTANT,

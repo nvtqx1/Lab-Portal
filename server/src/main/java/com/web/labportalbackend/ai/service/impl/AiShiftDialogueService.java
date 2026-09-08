@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.security.access.AccessDeniedException;
@@ -64,7 +65,11 @@ public class AiShiftDialogueService {
         if (!"LAB_SHIFT_CREATE_INTERPRETATION".equals(patch.kind()) || !labId.equals(patch.labRef())
                 || !Boolean.TRUE.equals(patch.requiresHumanReview())
                 || !Set.of("NEW", "CONTINUE").contains(patch.mode() == null ? "" : patch.mode())
-                || patch.clearFields() == null || !FIELDS.containsAll(patch.clearFields())) {
+                || patch.clearFields() == null || !FIELDS.containsAll(patch.clearFields())
+                || patch.timeMentions() == null || !validTimeMentions(patch.timeMentions())
+                || patch.dateMention() != null && patch.clearFields().contains("date")
+                || hasClearedTimeMention(patch, "START", "startTime")
+                || hasClearedTimeMention(patch, "END", "endTime")) {
             throw new AiSuggestionPayloadValidationException();
         }
         // Re-read defaults through the same actor-scoped projection used by the authorized context.
@@ -84,9 +89,6 @@ public class AiShiftDialogueService {
                 : normalizedName(lab.name()).equals(normalizedName(patch.requestedLabName()));
         var prior = continuing
                 ? previous : new AiShiftDialogueState(labId, null, null, null, null, null);
-        String date = value("date", patch.date(), prior.date(), patch.clearFields());
-        String start = value("startTime", patch.startTime(), prior.startTime(), patch.clearFields());
-        String end = value("endTime", patch.endTime(), prior.endTime(), patch.clearFields());
         boolean capacityCleared = patch.clearFields().contains("capacity");
         boolean zoneCleared = patch.clearFields().contains("timeZone");
         Integer capacity = capacityCleared
@@ -110,9 +112,16 @@ public class AiShiftDialogueService {
                 ? ValueSource.CLEARED : patch.timeZone() != null || continuing && prior.timeZoneSource() == ValueSource.USER
                 ? ValueSource.USER : ValueSource.DEFAULT;
         List<String> missing = new ArrayList<>();
-        date = validDate(date);
-        start = validTime(start);
-        end = validTime(end);
+        ZoneId selectedZone = validZone(zone);
+        if (selectedZone == null) {
+            missing.add("múi giờ hợp lệ");
+        } else {
+            zone = selectedZone.getId();
+        }
+        String date = patch.clearFields().contains("date") ? null
+                : patch.dateMention() != null ? validDate(patch.dateMention(), selectedZone) : prior.date();
+        String start = timeValue("START", "startTime", patch.timeMentions(), prior.startTime(), patch.clearFields());
+        String end = timeValue("END", "endTime", patch.timeMentions(), prior.endTime(), patch.clearFields());
         if (date == null) missing.add("ngày");
         if (start == null) missing.add("giờ bắt đầu");
         if (end == null) missing.add("giờ kết thúc");
@@ -122,12 +131,6 @@ public class AiShiftDialogueService {
         }
         if (capacity == null || capacity <= 0) {
             missing.add("sức chứa lớn hơn 0");
-        }
-        ZoneId selectedZone = validZone(zone);
-        if (selectedZone == null) {
-            missing.add("múi giờ hợp lệ");
-        } else {
-            zone = selectedZone.getId();
         }
         if (date != null && start != null && selectedZone != null) {
             var local = LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(start));
@@ -157,8 +160,31 @@ public class AiShiftDialogueService {
         return new Resolution(state, null, draft);
     }
 
-    private static String value(String field, String supplied, String previous, List<String> cleared) {
-        return cleared.contains(field) ? null : supplied != null ? supplied : previous;
+    private static boolean validTimeMentions(List<TimeMention> mentions) {
+        var roles = new HashSet<String>();
+        for (var mention : mentions) {
+            if (mention == null || !Set.of("START", "END").contains(mention.role())
+                    || mention.hour() == null || mention.hour() < 0 || mention.hour() > 23
+                    || mention.minute() == null || mention.minute() < 0 || mention.minute() > 59
+                    || !roles.add(mention.role())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasClearedTimeMention(Patch patch, String role, String field) {
+        return patch.clearFields().contains(field)
+                && patch.timeMentions().stream().anyMatch(mention -> role.equals(mention.role()));
+    }
+
+    private static String timeValue(String role, String field, List<TimeMention> mentions, String previous,
+                                    List<String> cleared) {
+        if (cleared.contains(field)) return null;
+        return mentions.stream().filter(mention -> role.equals(mention.role())).findFirst()
+                .map(mention -> LocalTime.of(mention.hour(), mention.minute())
+                        .format(DateTimeFormatter.ofPattern("HH:mm:ss")))
+                .orElse(previous);
     }
 
     private static String normalizedName(String value) {
@@ -166,14 +192,27 @@ public class AiShiftDialogueService {
                 .replaceAll("\\p{M}", "").replace('đ', 'd').replaceAll("\\s+", " ");
     }
 
-    private static String validDate(String value) {
-        try { return LocalDate.parse(value).toString(); }
-        catch (DateTimeException | NullPointerException exception) { return null; }
-    }
-
-    private static String validTime(String value) {
-        try { return LocalTime.parse(value).format(DateTimeFormatter.ofPattern("HH:mm:ss")); }
-        catch (DateTimeException | NullPointerException exception) { return null; }
+    private String validDate(DateMention mention, ZoneId selectedZone) {
+        if (mention.day() == null || mention.month() == null || mention.day() < 1 || mention.day() > 31
+                || mention.month() < 1 || mention.month() > 12
+                || mention.year() != null && (mention.year() < 1 || mention.year() > 9999)) {
+            return null;
+        }
+        if (mention.year() != null) {
+            try { return LocalDate.of(mention.year(), mention.month(), mention.day()).toString(); }
+            catch (DateTimeException exception) { return null; }
+        }
+        ZoneId comparisonZone = selectedZone == null ? defaults.timeZone() : selectedZone;
+        LocalDate currentDate = LocalDate.now(clock.withZone(comparisonZone));
+        for (int year = currentDate.getYear(); year <= currentDate.getYear() + 8; year++) {
+            try {
+                LocalDate candidate = LocalDate.of(year, mention.month(), mention.day());
+                if (!candidate.isBefore(currentDate)) return candidate.toString();
+            } catch (DateTimeException ignored) {
+                // Continue to the next year for dates such as 29 February.
+            }
+        }
+        return null;
     }
 
     private static ZoneId validZone(String supplied) {
@@ -186,6 +225,11 @@ public class AiShiftDialogueService {
 
     public record Resolution(AiShiftDialogueState state, String question, ObjectNode draft) {}
 
-    private record Patch(String kind, Long labRef, String requestedLabName, String mode, String date, String startTime, String endTime,
-                         Integer capacity, String timeZone, List<String> clearFields, Boolean requiresHumanReview) {}
+    private record Patch(String kind, Long labRef, String requestedLabName, String mode, DateMention dateMention,
+                         List<TimeMention> timeMentions, Integer capacity, String timeZone,
+                         List<String> clearFields, Boolean requiresHumanReview) {}
+
+    private record DateMention(Integer day, Integer month, Integer year) {}
+
+    private record TimeMention(String role, Integer hour, Integer minute) {}
 }

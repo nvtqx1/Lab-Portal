@@ -35,16 +35,36 @@ class AiShiftDialogueServiceTest {
     private com.fasterxml.jackson.databind.node.ObjectNode patch(String mode) {
         var p = mapper.createObjectNode();
         p.put("kind", "LAB_SHIFT_CREATE_INTERPRETATION").put("labRef", 10)
-                .put("requestedLabName", "AI Research Lab").put("mode", mode).putNull("date")
-                .putNull("startTime").putNull("endTime").putNull("capacity").putNull("timeZone")
+                .put("requestedLabName", "AI Research Lab").put("mode", mode).putNull("dateMention")
+                .putNull("capacity").putNull("timeZone")
                 .put("requiresHumanReview", true).putArray("clearFields");
+        p.putArray("timeMentions");
         return p;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode withDate(
+            com.fasterxml.jackson.databind.node.ObjectNode patch, int day, int month, Integer year) {
+        var date = patch.putObject("dateMention").put("day", day).put("month", month);
+        if (year == null) date.putNull("year"); else date.put("year", year);
+        return patch;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode withTime(
+            com.fasterxml.jackson.databind.node.ObjectNode patch, String role, int hour, int minute) {
+        patch.withArray("timeMentions").addObject().put("role", role).put("hour", hour).put("minute", minute);
+        return patch;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode completeTimes(
+            com.fasterxml.jackson.databind.node.ObjectNode patch, int startHour, int endHour) {
+        withTime(patch, "START", startHour, 0);
+        return withTime(patch, "END", endHour, 0);
     }
 
     @Test
     void shortAnswerCompletesOnlyMissingEndTimeAndProducesDraft() {
         var previous = new AiShiftDialogueState(10L, "2026-09-14", "09:00:00", null, 20, "Asia/Ho_Chi_Minh");
-        var p = patch("CONTINUE").put("endTime", "11:00");
+        var p = withTime(patch("CONTINUE"), "END", 11, 0);
         var result = service.resolve(10L, p.toString(), previous);
         assertNull(result.question());
         assertEquals("2026-09-14T09:00:00", result.draft().path("startLocalDateTime").asText());
@@ -53,9 +73,35 @@ class AiShiftDialogueServiceTest {
     }
 
     @Test
+    void endOnlyRequestKeepsEndRoleAndAsksForStartTime() {
+        var request = withDate(patch("NEW").putNull("requestedLabName"), 30, 9, 2026);
+        withTime(request, "END", 11, 0);
+
+        var result = service.resolve(10L, request.toString(), null);
+
+        assertNull(result.draft());
+        assertEquals("2026-09-30", result.state().date());
+        assertNull(result.state().startTime());
+        assertEquals("11:00:00", result.state().endTime());
+        assertEquals("Bạn vui lòng bổ sung giờ bắt đầu.", result.question());
+    }
+
+    @Test
+    void dayMonthWithoutYearUsesNextCalendarOccurrence() {
+        var request = completeTimes(withDate(patch("NEW").putNull("requestedLabName"), 4, 10, null), 13, 15);
+
+        var result = service.resolve(10L, request.toString(), null);
+
+        assertNotNull(result.draft());
+        assertEquals("2026-10-04", result.state().date());
+        assertEquals("2026-10-04T13:00:00", result.draft().path("startLocalDateTime").asText());
+        assertEquals("2026-10-04T15:00:00", result.draft().path("endLocalDateTime").asText());
+    }
+
+    @Test
     void newRequestDoesNotInheritOldDateOrTime() {
         var previous = new AiShiftDialogueState(10L, "2026-09-14", "09:00:00", "11:00:00", 20, "Asia/Ho_Chi_Minh");
-        var result = service.resolve(10L, patch("NEW").put("startTime", "13:00").put("endTime", "15:00").toString(), previous);
+        var result = service.resolve(10L, completeTimes(patch("NEW"), 13, 15).toString(), previous);
         assertNull(result.draft());
         assertNull(result.state().date());
         assertEquals("Bạn vui lòng bổ sung ngày.", result.question());
@@ -65,14 +111,14 @@ class AiShiftDialogueServiceTest {
     @Test
     void correctionPreservesOtherValues() {
         var previous = new AiShiftDialogueState(10L, "2026-09-14", "09:00:00", "11:00:00", 20, "Asia/Ho_Chi_Minh");
-        var result = service.resolve(10L, patch("CONTINUE").put("endTime", "12:00").toString(), previous);
+        var result = service.resolve(10L, withTime(patch("CONTINUE"), "END", 12, 0).toString(), previous);
         assertEquals("12:00:00", result.state().endTime());
         assertEquals("09:00:00", result.state().startTime());
     }
 
     @Test
     void invalidEndTimeIsAskedAgainAndNotStoredAsValid() {
-        var p = patch("NEW").put("date", "2026-09-14").put("startTime", "09:00").put("endTime", "08:00");
+        var p = completeTimes(withDate(patch("NEW"), 14, 9, 2026), 9, 8);
         var result = service.resolve(10L, p.toString(), null);
         assertNull(result.draft());
         assertNull(result.state().endTime());
@@ -89,8 +135,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void pastDateAsksForFutureDateWithoutLosingTimes() {
-        var result = service.resolve(10L, patch("NEW").put("date", "2024-06-14")
-                .put("startTime", "09:00").put("endTime", "11:00").toString(), null);
+        var result = service.resolve(10L, completeTimes(withDate(patch("NEW"), 14, 6, 2024), 9, 11)
+                .toString(), null);
         assertNull(result.draft());
         assertNull(result.state().date());
         assertEquals("09:00:00", result.state().startTime());
@@ -99,8 +145,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void omittedLabOnNewRequestUsesManagersOnlyAuthorizedLabAndDefaultCapacity() {
-        var result = service.resolve(10L, patch("NEW").putNull("requestedLabName").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00").toString(), null);
+        var result = service.resolve(10L, completeTimes(withDate(patch("NEW").putNull("requestedLabName"),
+                14, 9, 2026), 9, 11).toString(), null);
         assertNotNull(result.draft());
         assertTrue(result.state().labConfirmed());
         assertEquals(30, result.draft().path("capacity").asInt());
@@ -109,10 +155,10 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void timeFollowUpCannotResolveAnExplicitLabConflict() {
-        var conflict = service.resolve(10L, patch("NEW").put("requestedLabName", "Robotics Lab")
-                .put("date", "2026-09-14").put("startTime", "09:00").toString(), null);
-        var followUp = service.resolve(10L, patch("CONTINUE").putNull("requestedLabName")
-                .put("endTime", "11:00").toString(), conflict.state());
+        var conflictPatch = withDate(patch("NEW").put("requestedLabName", "Robotics Lab"), 14, 9, 2026);
+        var conflict = service.resolve(10L, withTime(conflictPatch, "START", 9, 0).toString(), null);
+        var followUp = service.resolve(10L, withTime(patch("CONTINUE").putNull("requestedLabName"),
+                "END", 11, 0).toString(), conflict.state());
         assertFalse(followUp.state().labConfirmed());
         assertNull(followUp.draft());
         var corrected = service.resolve(10L, patch("CONTINUE").toString(), followUp.state());
@@ -121,11 +167,11 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void explicitCapacityOverridesDefaultAndSurvivesFollowUp() {
-        var first = service.resolve(10L, patch("NEW").putNull("requestedLabName")
-                .put("date", "2026-09-14").put("startTime", "09:00").put("capacity", 15).toString(), null);
+        var firstPatch = withDate(patch("NEW").putNull("requestedLabName").put("capacity", 15), 14, 9, 2026);
+        var first = service.resolve(10L, withTime(firstPatch, "START", 9, 0).toString(), null);
         assertEquals(15, first.state().capacity());
-        var second = service.resolve(10L, patch("CONTINUE").putNull("requestedLabName")
-                .put("endTime", "11:00").toString(), first.state());
+        var second = service.resolve(10L, withTime(patch("CONTINUE").putNull("requestedLabName"),
+                "END", 11, 0).toString(), first.state());
         assertNotNull(second.draft());
         assertEquals(15, second.draft().path("capacity").asInt());
         assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
@@ -134,9 +180,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void explicitTimezoneOverridesDefaultAndIsUsedByDraft() {
-        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00")
-                .put("timeZone", "Asia/Bangkok").toString(), null);
+        var result = service.resolve(10L, completeTimes(withDate(
+                patch("NEW").put("timeZone", "Asia/Bangkok"), 14, 9, 2026), 9, 11).toString(), null);
 
         assertNotNull(result.draft());
         assertEquals("Asia/Bangkok", result.state().timeZone());
@@ -147,9 +192,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void matchingFixedCapacityAndTimezoneAreAcceptedAsComparisons() {
-        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00")
-                .put("capacity", 30).put("timeZone", "Asia/Ho_Chi_Minh").toString(), null);
+        var result = service.resolve(10L, completeTimes(withDate(patch("NEW").put("capacity", 30)
+                .put("timeZone", "Asia/Ho_Chi_Minh"), 14, 9, 2026), 9, 11).toString(), null);
 
         assertNotNull(result.draft());
         assertEquals(30, result.draft().path("capacity").asInt());
@@ -158,8 +202,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void invalidCapacityIsRetainedUntilUserChangesOrClearsIt() {
-        var invalid = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00").put("capacity", -5).toString(), null);
+        var invalid = service.resolve(10L, completeTimes(withDate(
+                patch("NEW").put("capacity", -5), 14, 9, 2026), 9, 11).toString(), null);
         assertNull(invalid.draft());
         assertEquals(-5, invalid.state().capacity());
         assertEquals(com.web.labportalbackend.ai.service.AiShiftDialogueState.ValueSource.USER,
@@ -175,9 +219,8 @@ class AiShiftDialogueServiceTest {
 
     @Test
     void invalidTimezoneIsRejectedWithoutReplacingItWithTheDefault() {
-        var result = service.resolve(10L, patch("NEW").put("date", "2026-09-14")
-                .put("startTime", "09:00").put("endTime", "11:00")
-                .put("timeZone", "Not/A_Zone").toString(), null);
+        var result = service.resolve(10L, completeTimes(withDate(
+                patch("NEW").put("timeZone", "Not/A_Zone"), 14, 9, 2026), 9, 11).toString(), null);
 
         assertNull(result.draft());
         assertEquals("Not/A_Zone", result.state().timeZone());
@@ -192,6 +235,9 @@ class AiShiftDialogueServiceTest {
                 patch("NEW").put("labRef", 99).toString(), null));
         assertThrows(AiSuggestionPayloadValidationException.class, () -> service.resolve(10L,
                 patch("NEW").put("confidence", 0.99).toString(), null));
+        var duplicateRole = withTime(withTime(patch("NEW"), "END", 11, 0), "END", 12, 0);
+        assertThrows(AiSuggestionPayloadValidationException.class, () -> service.resolve(10L,
+                duplicateRole.toString(), null));
     }
 
     @Test

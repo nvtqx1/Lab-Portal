@@ -332,8 +332,24 @@ class AiUnifiedChatServiceImplTest {
     private static AiAssistantChatResponse interpreted(String mode, String date, String start, String end) {
         var patch = OBJECT_MAPPER.createObjectNode();
         patch.put("kind", "LAB_SHIFT_CREATE_INTERPRETATION").put("labRef", 10).put("requestedLabName", "AI Research Lab")
-                .put("mode", mode).put("date", date).put("startTime", start).put("endTime", end)
-                .putNull("capacity").putNull("timeZone").put("requiresHumanReview", true).putArray("clearFields");
+                .put("mode", mode).putNull("capacity").putNull("timeZone").put("requiresHumanReview", true)
+                .putArray("clearFields");
+        if (date == null) {
+            patch.putNull("dateMention");
+        } else {
+            var parsed = java.time.LocalDate.parse(date);
+            patch.putObject("dateMention").put("day", parsed.getDayOfMonth()).put("month", parsed.getMonthValue())
+                    .put("year", parsed.getYear());
+        }
+        var times = patch.putArray("timeMentions");
+        if (start != null) {
+            var parsed = java.time.LocalTime.parse(start);
+            times.addObject().put("role", "START").put("hour", parsed.getHour()).put("minute", parsed.getMinute());
+        }
+        if (end != null) {
+            var parsed = java.time.LocalTime.parse(end);
+            times.addObject().put("role", "END").put("hour", parsed.getHour()).put("minute", parsed.getMinute());
+        }
         return new AiAssistantChatResponse("LAB_ASSISTANT", patch.toString(), 1, 1, List.of());
     }
 }
