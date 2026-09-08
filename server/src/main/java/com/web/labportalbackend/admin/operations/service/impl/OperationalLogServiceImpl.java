@@ -178,7 +178,7 @@ public class OperationalLogServiceImpl implements OperationalLogService {
 
     private FaceCheckinOperationalResponse toFaceCheckin(FaceCheckinLogEntity log) {
         return new FaceCheckinOperationalResponse(log.getId(), log.getBooking().getId(), log.getUser().getId(),
-                log.getLab().getId(), log.getCheckinMethod(), log.getResult(), log.getFailureReason(),
+                log.getUser().getFullName(), log.getLab().getId(), log.getCheckinMethod(), log.getResult(), log.getFailureReason(),
                 log.getCreatedAt());
     }
 

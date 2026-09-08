@@ -60,6 +60,25 @@ export function ProfilePage() {
     () => profile?.memberships?.filter((membership) => membership.status?.toUpperCase() === 'ACTIVE') ?? [],
     [profile?.memberships],
   );
+  const managedLab = profile?.managedLab;
+  const managedLabName = managedLab?.name ?? managedLab?.labName ?? null;
+  const managedLabId = managedLab?.id ?? profile?.managedLabId ?? null;
+  const managedLabEntries = useMemo(
+    () => [
+      ...(managedLabName ? [{ key: `managed-${managedLabId ?? managedLabName}`, name: managedLabName, status: 'Đang quản lý' }] : []),
+      ...activeMemberships
+        .filter((membership) => {
+          const membershipId = membership.labId ?? membership.lab?.id ?? membership.id;
+          return !(managedLabId && membershipId === managedLabId) && getLabName(membership) !== managedLabName;
+        })
+        .map((membership, index) => ({
+          key: `${membership.labId ?? membership.lab?.id ?? membership.id ?? index}-${membership.status}`,
+          name: getLabName(membership),
+          status: 'Đang hoạt động',
+        })),
+    ],
+    [activeMemberships, managedLabId, managedLabName],
+  );
 
   const {
     register,
@@ -198,16 +217,16 @@ export function ProfilePage() {
 
           <div>
             <h3 className="text-sm font-semibold text-slate-950">Thông tin PTN</h3>
-            {activeMemberships.length ? (
+            {managedLabEntries.length ? (
               <ul className="mt-3 divide-y divide-slate-200 rounded-md border border-slate-200">
-                {activeMemberships.map((membership, index) => (
+                {managedLabEntries.map((lab) => (
                   <li
                     className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                    key={`${membership.labId ?? membership.lab?.id ?? membership.id ?? index}-${membership.status}`}
+                    key={lab.key}
                   >
-                    <span className="font-medium text-slate-950">{getLabName(membership)}</span>
+                    <span className="font-medium text-slate-950">{lab.name}</span>
                     <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                      Đang hoạt động
+                      {lab.status}
                     </span>
                   </li>
                 ))}

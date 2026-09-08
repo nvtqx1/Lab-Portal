@@ -67,7 +67,6 @@ const managerNavItems: NavItem[] = [
   { label: 'Nhật ký vận hành', path: '/app/operational-logs', group: 'Hỗ trợ và tài khoản', icon: Activity },
   { label: 'Kho tri thức AI', path: '/app/knowledge', group: 'Hỗ trợ và tài khoản', icon: BookOpenCheck },
   { label: 'Trợ lý AI', path: '/app/assistant', group: 'Hỗ trợ và tài khoản', icon: Bot },
-  { label: 'Hồ sơ khuôn mặt', path: '/app/face-profile', group: 'Hỗ trợ và tài khoản', icon: ScanFace },
   { label: 'Hồ sơ cá nhân', path: '/app/profile', group: 'Hỗ trợ và tài khoản', icon: CircleUserRound },
 ];
 
@@ -223,6 +222,7 @@ export function MainLayout() {
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold text-slate-950">{portalTitle}</p>
                 <p className="mt-1 text-xs font-medium text-slate-500">{roleLabel}</p>
+                {isManager && user?.managedLab?.name ? <p className="mt-1 max-w-48 truncate text-xs text-slate-500">{user.managedLab.name}</p> : null}
               </div>
               <Button
                 aria-label="Đóng menu"
@@ -239,6 +239,7 @@ export function MainLayout() {
               navItems={navItems}
               portalTitle={portalTitle}
               roleLabel={roleLabel}
+              managedLabName={isManager ? user?.managedLab?.name : null}
               onNavigate={() => setIsNavOpen(false)}
               compact
               interactive={isNavOpen}
@@ -251,6 +252,7 @@ export function MainLayout() {
           navItems={navItems}
           portalTitle={portalTitle}
           roleLabel={roleLabel}
+          managedLabName={isManager ? user?.managedLab?.name : null}
           onNavigate={() => undefined}
         />
       </aside>
@@ -323,6 +325,7 @@ interface SidebarContentProps {
   navItems: NavItem[];
   portalTitle: string;
   roleLabel: string;
+  managedLabName?: string | null;
   compact?: boolean;
   interactive?: boolean;
   onNavigate: () => void;
@@ -332,6 +335,7 @@ function SidebarContent({
   navItems,
   portalTitle,
   roleLabel,
+  managedLabName,
   compact = false,
   interactive = true,
   onNavigate,
@@ -352,6 +356,12 @@ function SidebarContent({
           <div className="mt-3 rounded-md bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
             {roleLabel}
           </div>
+          {managedLabName ? (
+            <div className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">PTN đang quản lý</p>
+              <p className="mt-1 truncate text-xs font-medium text-slate-700" title={managedLabName}>{managedLabName}</p>
+            </div>
+          ) : null}
         </>
       ) : null}
 

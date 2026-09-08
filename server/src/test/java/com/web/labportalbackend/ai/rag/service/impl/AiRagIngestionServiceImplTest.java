@@ -1,6 +1,7 @@
 package com.web.labportalbackend.ai.rag.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,6 +25,9 @@ import com.web.labportalbackend.auth.entity.User;
 import com.web.labportalbackend.auth.repository.UserRepository;
 import com.web.labportalbackend.common.enums.UserStatus;
 import com.web.labportalbackend.lab.repository.LaboratoryRepository;
+import com.web.labportalbackend.lab.entity.Laboratory;
+import com.web.labportalbackend.research.entity.GroupEntity;
+import com.web.labportalbackend.research.entity.ResearchTopicEntity;
 import com.web.labportalbackend.research.repository.GroupRepository;
 import com.web.labportalbackend.research.repository.ProjectRepository;
 import java.util.List;
@@ -163,6 +167,57 @@ class AiRagIngestionServiceImplTest {
         verify(chunkRepository, never()).saveAll(any());
     }
 
+    @Test
+    void ingestsTopicGroupScopeWithoutRequiringProject() {
+        User manager = actor("LAB_MANAGER");
+        Laboratory lab = new Laboratory();
+        lab.setId(10L);
+        GroupEntity group = new GroupEntity();
+        group.setId(30L);
+        group.setLab(lab);
+        ResearchTopicEntity topic = new ResearchTopicEntity();
+        topic.setId(40L);
+        topic.setLab(lab);
+        group.setTopic(topic);
+        AiRagDocumentIngestRequest request = researchGroupRequest();
+        when(userRepository.findByUsername("manager")).thenReturn(Optional.of(manager));
+        when(laboratoryRepository.existsByIdAndManagerIdAndActiveTrueAndDeletedFalse(10L, 7L)).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedFalseAndActiveTrue(30L)).thenReturn(Optional.of(group));
+        when(documentRepository.existsByNamespaceAndResourceIdAndActiveTrueAndDeletedFalse(
+                "research-knowledge", "topic-group-guide")).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            AiRagDocumentEntity document = invocation.getArgument(0);
+            document.setId(200L);
+            return document;
+        });
+
+        service.ingest(request);
+
+        ArgumentCaptor<AiRagDocumentEntity> document = ArgumentCaptor.forClass(AiRagDocumentEntity.class);
+        verify(documentRepository).save(document.capture());
+        assertEquals(10L, document.getValue().getLabId());
+        assertEquals(30L, document.getValue().getGroupId());
+        assertNull(document.getValue().getProjectId());
+    }
+
+    @Test
+    void rejectsTopicGroupOutsideManagedLaboratory() {
+        User manager = actor("LAB_MANAGER");
+        Laboratory anotherLab = new Laboratory();
+        anotherLab.setId(11L);
+        GroupEntity group = new GroupEntity();
+        group.setId(30L);
+        group.setLab(anotherLab);
+        when(userRepository.findByUsername("manager")).thenReturn(Optional.of(manager));
+        when(laboratoryRepository.existsByIdAndManagerIdAndActiveTrueAndDeletedFalse(10L, 7L)).thenReturn(true);
+        when(groupRepository.findByIdAndDeletedFalseAndActiveTrue(30L)).thenReturn(Optional.of(group));
+
+        assertThrows(AccessDeniedException.class, () -> service.ingest(researchGroupRequest()));
+
+        verify(documentRepository, never()).save(any());
+        verify(chunkRepository, never()).saveAll(any());
+    }
+
     private static User actor(String roleName) {
         User actor = new User();
         actor.setId(7L);
@@ -208,6 +263,20 @@ class AiRagIngestionServiceImplTest {
         request.setContent("First page.\fSecond page.");
         request.setVisibility(AiRagVisibility.LAB_MEMBERS);
         request.setLabId(10L);
+        return request;
+    }
+
+    private static AiRagDocumentIngestRequest researchGroupRequest() {
+        AiRagDocumentIngestRequest request = new AiRagDocumentIngestRequest();
+        request.setDomain(AiAssistantDomain.RESEARCH);
+        request.setResourceId("topic-group-guide");
+        request.setVersion(1);
+        request.setSourceType("RESEARCH_REPORT");
+        request.setTitle("Topic group guide");
+        request.setContent("Authorized group research content.");
+        request.setVisibility(AiRagVisibility.GROUP_MEMBERS);
+        request.setLabId(10L);
+        request.setGroupId(30L);
         return request;
     }
 }

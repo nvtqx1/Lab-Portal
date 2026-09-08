@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom';
 import type { Response } from '../../../shared/types';
 import { queryKeys } from '../../../shared/api';
 import { Button, EmptyState, ErrorState, Modal, ResponsiveTable } from '../../../shared/components';
+import { cameraErrorMessage } from '../../../shared/utils';
 import { useOperationalLogs } from '../../operations/hooks';
 import type { FaceCheckinLog } from '../../operations/types';
 import { ManagerFaceCheckinPanel } from '../../face/components/ManagerFaceCheckinPanel';
@@ -33,8 +34,9 @@ export function CheckInPage() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [qrCameraDialogOpen, setQrCameraDialogOpen] = useState(false);
   const [lastSuccess, setLastSuccess] = useState<{
-    method: 'Face ID' | 'QR' | 'Thủ công';
+    method: 'Nhận diện khuôn mặt' | 'QR' | 'Thủ công';
     bookingId: number;
+    studentName?: string | null;
     booking?: BookingResponse;
   } | null>(null);
   const confirmCheckIn = useConfirmCheckIn();
@@ -144,8 +146,8 @@ export function CheckInPage() {
         return;
       }
       scannerControlsRef.current = controls;
-    } catch {
-      setCameraError('Không thể mở camera. Vui lòng kiểm tra quyền truy cập camera hoặc nhập token thủ công.');
+    } catch (cameraError) {
+      setCameraError(`${cameraErrorMessage(cameraError)} Bạn có thể nhập token thủ công.`);
       stopCamera();
     }
   };
@@ -185,7 +187,7 @@ export function CheckInPage() {
           <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Trạm điểm danh của quản lý PTN</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">Check-in thành viên theo ca</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-            Theo dõi Face ID là luồng chính, quét QR fallback bằng camera và chỉ xác nhận thủ công khi cả hai phương thức không khả dụng.
+            Nhận diện khuôn mặt là phương thức chính; có thể quét QR dự phòng hoặc xác nhận thủ công khi cần.
           </p>
         </div>
 
@@ -196,7 +198,7 @@ export function CheckInPage() {
 
         <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Phương thức quản lý check-in">
           {([
-            { id: 'FACE' as const, label: 'Face ID', icon: ScanFace },
+            { id: 'FACE' as const, label: 'Nhận diện khuôn mặt', icon: ScanFace },
             { id: 'QR' as const, label: 'Quét QR', icon: QrCode },
             { id: 'MANUAL' as const, label: 'Thủ công', icon: Keyboard },
           ]).map(({ id, label, icon: Icon }) => <button aria-selected={activeTab === id} className={activeTab === id ? 'flex min-h-11 items-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm dark:bg-white dark:text-slate-950' : 'flex min-h-11 items-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'} key={id} role="tab" type="button" onClick={() => { stopCamera(); setActiveTab(id); }}><Icon aria-hidden="true" className="h-4 w-4" />{label}</button>)}
@@ -205,7 +207,7 @@ export function CheckInPage() {
         {lastSuccess ? (
           <div className="mt-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100" role="status">
             <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
-            <div><p className="font-semibold">Check-in bằng {lastSuccess.method} thành công</p><p className="mt-1">Booking #{lastSuccess.bookingId}{lastSuccess.booking ? ` · ${lastSuccess.booking.studentName ?? lastSuccess.booking.studentEmail ?? `User #${lastSuccess.booking.userId}`}` : ''} đã chuyển sang trạng thái “Đã xác nhận có mặt”.</p></div>
+            <div><p className="font-semibold">Xác nhận có mặt bằng {lastSuccess.method} thành công</p><p className="mt-1">Lượt đặt #{lastSuccess.bookingId}{lastSuccess.studentName ? ` · ${lastSuccess.studentName}` : lastSuccess.booking ? ` · ${lastSuccess.booking.studentName ?? lastSuccess.booking.studentEmail ?? `Người dùng #${lastSuccess.booking.userId}`}` : ''} đã chuyển sang trạng thái “Đã xác nhận có mặt”.</p></div>
           </div>
         ) : null}
 
@@ -215,7 +217,7 @@ export function CheckInPage() {
           {qrRequests.isLoading ? <p className="mt-4 text-sm text-slate-500">Đang tải yêu cầu...</p> : qrRequests.isError ? <ErrorState className="mt-4" onRetry={() => void qrRequests.refetch()}>Không thể tải yêu cầu QR.</ErrorState> : !qrRequests.data?.length ? <EmptyState className="mt-4">Không có yêu cầu QR đang chờ.</EmptyState> : (
             <div className="mt-4 space-y-3">{qrRequests.data.map((request) => (
               <article className="rounded-md border border-blue-200 bg-white p-4" key={request.requestId}>
-                <p className="font-semibold text-slate-900">{request.studentName ?? `User #${request.studentId}`} · Booking #{request.bookingId}</p>
+                <p className="font-semibold text-slate-900">{request.studentName ?? `Người dùng #${request.studentId}`} · Lượt đặt #{request.bookingId}</p>
                 <p className="mt-1 text-sm text-slate-700">Lý do: {request.reason}</p>
                 <div className="mt-3 flex gap-2">
                   <Button disabled={reviewQrRequest.isPending} onClick={() => reviewQrRequest.mutate({ requestId: request.requestId, approved: true })}>Duyệt và cấp QR</Button>
@@ -268,10 +270,10 @@ export function CheckInPage() {
         </> : null}
 
         {activeTab === 'FACE' ? <section className="mt-6" role="tabpanel">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-slate-950">Face ID theo booking/ca sử dụng</h2><p className="mt-1 text-sm text-slate-600">Manager chọn booking đã duyệt, sau đó từng thành viên đứng trước camera tại bàn check-in để nhận diện.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => void faceLogs.refetch()}>Làm mới</Button><Link className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700" to="/app/operational-logs">Xem toàn bộ nhật ký</Link></div></div>
-          <ManagerFaceCheckinPanel onCompleted={(bookingId) => { setLastSuccess({ method: 'Face ID', bookingId }); void faceLogs.refetch(); }} />
-          <h3 className="mt-8 text-base font-semibold text-slate-950">Nhật ký Face ID gần đây</h3>
-          {faceLogs.isLoading ? <div className="mt-4 h-28 animate-pulse rounded bg-slate-100" /> : faceLogs.isError ? <ErrorState className="mt-4" onRetry={() => void faceLogs.refetch()}>Không thể tải nhật ký Face ID.</ErrorState> : faceAttempts.length === 0 ? <EmptyState className="mt-4">Chưa có lượt Face ID nào trong PTN đang quản lý.</EmptyState> : <ResponsiveTable className="mt-4"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Thời gian</th><th className="px-4 py-3">Booking/ca</th><th className="px-4 py-3">Sinh viên</th><th className="px-4 py-3">Kết quả</th><th className="px-4 py-3">Chi tiết</th></tr></thead><tbody className="divide-y divide-slate-200">{faceAttempts.map((attempt) => <tr key={attempt.id}><td className="whitespace-nowrap px-4 py-3">{new Date(attempt.createdAt).toLocaleString('vi-VN')}</td><td className="px-4 py-3 font-medium">#{attempt.bookingId}</td><td className="px-4 py-3">User #{attempt.userId}</td><td className="px-4 py-3">{attempt.result}</td><td className="px-4 py-3">{attempt.failureReason ?? 'Không có lỗi'}</td></tr>)}</tbody></table></ResponsiveTable>}
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-slate-950">Nhận diện khuôn mặt theo ca sử dụng</h2><p className="mt-1 text-sm text-slate-600">Quản lý chỉ cần chọn ca sử dụng. Camera sẽ tự nhận diện trong danh sách sinh viên đã đăng ký ca đó và xác nhận có mặt.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => void faceLogs.refetch()}>Làm mới</Button><Link className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700" to="/app/operational-logs">Xem toàn bộ nhật ký</Link></div></div>
+          <ManagerFaceCheckinPanel onCompleted={(result) => { if (result.bookingId !== null) setLastSuccess({ method: 'Nhận diện khuôn mặt', bookingId: result.bookingId, studentName: result.studentName }); void faceLogs.refetch(); }} />
+          <h3 className="mt-8 text-base font-semibold text-slate-950">Nhật ký nhận diện gần đây</h3>
+          {faceLogs.isLoading ? <div className="mt-4 h-28 animate-pulse rounded bg-slate-100" /> : faceLogs.isError ? <ErrorState className="mt-4" onRetry={() => void faceLogs.refetch()}>Không thể tải nhật ký nhận diện.</ErrorState> : faceAttempts.length === 0 ? <EmptyState className="mt-4">Chưa có lượt nhận diện nào trong PTN đang quản lý.</EmptyState> : <ResponsiveTable className="mt-4"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Thời gian</th><th className="px-4 py-3">Lượt đặt</th><th className="px-4 py-3">Sinh viên</th><th className="px-4 py-3">Kết quả</th><th className="px-4 py-3">Chi tiết</th></tr></thead><tbody className="divide-y divide-slate-200">{faceAttempts.map((attempt) => <tr key={attempt.id}><td className="whitespace-nowrap px-4 py-3">{new Date(attempt.createdAt).toLocaleString('vi-VN')}</td><td className="px-4 py-3 font-medium">#{attempt.bookingId}</td><td className="px-4 py-3">{attempt.studentName ?? `Người dùng #${attempt.userId}`}</td><td className="px-4 py-3">{attempt.result}</td><td className="px-4 py-3">{attempt.failureReason ?? 'Không có lỗi'}</td></tr>)}</tbody></table></ResponsiveTable>}
         </section> : null}
 
         {activeTab === 'MANUAL' ? <section className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-6 dark:border-amber-900 dark:bg-amber-950/30" role="tabpanel">
@@ -295,7 +297,7 @@ export function CheckInPage() {
         closeOnEscape
         isOpen={qrCameraDialogOpen}
         onClose={closeQrCameraDialog}
-        size={lastSuccess?.method === 'QR' ? 'lg' : 'full'}
+        size={lastSuccess?.method === 'QR' ? 'lg' : '2xl'}
         subtitle={lastSuccess?.method === 'QR' ? 'Kết quả đã được ghi nhận vào ca sử dụng.' : 'Đặt mã QR vào chính giữa khung hình.'}
         title={lastSuccess?.method === 'QR' ? 'Kết quả quét QR' : 'Camera quét QR check-in'}
       >
@@ -303,11 +305,11 @@ export function CheckInPage() {
           <div className="flex flex-col items-center py-8 text-center" role="status">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 aria-hidden="true" className="h-9 w-9" /></span>
             <h3 className="mt-4 text-xl font-semibold text-slate-950">Check-in thành công</h3>
-            <p className="mt-2 text-sm text-slate-600">Booking #{lastSuccess.bookingId}{lastSuccess.booking ? ` · ${lastSuccess.booking.studentName ?? lastSuccess.booking.studentEmail ?? `User #${lastSuccess.booking.userId}`}` : ''} đã được xác nhận có mặt.</p>
+            <p className="mt-2 text-sm text-slate-600">Lượt đặt #{lastSuccess.bookingId}{lastSuccess.booking ? ` · ${lastSuccess.booking.studentName ?? lastSuccess.booking.studentEmail ?? `Người dùng #${lastSuccess.booking.userId}`}` : ''} đã được xác nhận có mặt.</p>
             <Button className="mt-6" type="button" onClick={closeQrCameraDialog}>Hoàn tất</Button>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[calc(72dvh*16/9)]">
+          <div className="mx-auto w-full max-w-4xl">
             <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-md bg-slate-950">
               <video ref={videoRef} autoPlay className="h-full w-full object-cover" muted playsInline aria-label="Camera quét mã QR check-in" />
               <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-lg border-2 border-white shadow-[0_0_0_999px_rgba(15,23,42,0.35)]" />

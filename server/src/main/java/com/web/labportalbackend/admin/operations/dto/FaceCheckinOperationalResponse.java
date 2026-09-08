@@ -9,6 +9,7 @@ public record FaceCheckinOperationalResponse(
         @Schema(description = "Unique face check-in log identifier") Long id,
         @Schema(description = "Booking associated with the check-in") Long bookingId,
         @Schema(description = "User whose booking was checked in") Long userId,
+        @Schema(description = "Display name of the user whose booking was checked in") String studentName,
         @Schema(description = "Laboratory where the check-in occurred") Long labId,
         @Schema(description = "Mechanism used for check-in") FaceCheckinMethod method,
         @Schema(description = "Recorded check-in result") FaceCheckinResult result,

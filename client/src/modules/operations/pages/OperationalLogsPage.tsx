@@ -8,6 +8,15 @@ import type { OperationalFilters, OperationalLogItem, OperationalLogKind } from 
 
 interface DisplayRow { id: number; createdAt: string; actor: string; scope: string; event: string; outcome: string; detail: string; }
 
+function resultLabel(value: string) {
+  return ({ SUCCESS: 'Thành công', FAILED: 'Thất bại', DENIED: 'Bị từ chối' } as Record<string, string>)[value] ?? value;
+}
+
+function failureLabel(value: string | null) {
+  if (!value) return 'Không có lỗi';
+  return ({ NO_MATCH: 'Không tìm thấy khuôn mặt khớp', NO_FACE: 'Không phát hiện khuôn mặt', MULTIPLE_FACES: 'Phát hiện nhiều khuôn mặt', LOW_QUALITY: 'Hình ảnh chưa đạt chất lượng', SPOOF_DETECTED: 'Không xác minh được khuôn mặt thật', SERVICE_ERROR: 'Dịch vụ nhận diện không khả dụng' } as Record<string, string>)[value] ?? value;
+}
+
 function displayRow(kind: OperationalLogKind, item: OperationalLogItem): DisplayRow {
   if (kind === 'ai-usage' && 'promptTokens' in item) return {
     id: item.id, createdAt: item.createdAt, actor: `User #${item.userId}`,
@@ -21,11 +30,11 @@ function displayRow(kind: OperationalLogKind, item: OperationalLogItem): Display
     outcome: item.status, detail: `Execution: ${item.executionStatus}`,
   };
   const face = item as Extract<OperationalLogItem, { bookingId: number }>;
-  return { id: face.id, createdAt: face.createdAt, actor: `User #${face.userId}`, scope: `PTN #${face.labId}`, event: `${face.method} · Booking #${face.bookingId}`, outcome: face.result, detail: face.failureReason ?? 'Không có lỗi' };
+  return { id: face.id, createdAt: face.createdAt, actor: face.studentName ?? `Người dùng #${face.userId}`, scope: `PTN #${face.labId}`, event: `Nhận diện khuôn mặt · Lượt đặt #${face.bookingId}`, outcome: resultLabel(face.result), detail: failureLabel(face.failureReason) };
 }
 
 const tabs: Array<{ kind: OperationalLogKind; label: string }> = [
-  { kind: 'ai-usage', label: 'AI Usage' }, { kind: 'ai-actions', label: 'AI Actions' }, { kind: 'face-checkins', label: 'Face Check-in' },
+  { kind: 'ai-usage', label: 'Sử dụng AI' }, { kind: 'ai-actions', label: 'Thao tác AI' }, { kind: 'face-checkins', label: 'Nhận diện khuôn mặt' },
 ];
 
 export function OperationalLogsPage() {
@@ -61,12 +70,12 @@ export function OperationalLogsPage() {
       <header className="mb-5"><p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-400"><Activity aria-hidden="true" className="h-4 w-4" /> Bằng chứng vận hành</p><h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">Nhật ký vận hành</h1><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Theo dõi metadata đã giới hạn; không hiển thị prompt, ảnh, embedding, token hoặc thông tin bí mật.</p></header>
       <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Loại nhật ký">{availableTabs.map((tab) => <button aria-selected={kind === tab.kind} className={['min-h-11 rounded-md px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500', kind === tab.kind ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'].join(' ')} key={tab.kind} role="tab" type="button" onClick={() => { setKind(tab.kind); setPage(0); setFilters({}); }}>{tab.kind === 'face-checkins' ? <ScanFace aria-hidden="true" className="mr-2 inline h-4 w-4" /> : <Bot aria-hidden="true" className="mr-2 inline h-4 w-4" />}{tab.label}</button>)}</div>
       <form className="mb-5 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6 dark:border-slate-800 dark:bg-slate-900" onSubmit={submit}>
-        <FilterInput label="User ID" type="number" value={inputs.userId} onChange={(value) => setInputs((current) => ({ ...current, userId: value }))} />
-        {kind !== 'ai-actions' ? <FilterInput label="Lab ID" type="number" value={inputs.labId} onChange={(value) => setInputs((current) => ({ ...current, labId: value }))} /> : null}
-        {kind !== 'ai-usage' ? <FilterInput label={kind === 'face-checkins' ? 'Booking ID' : 'Resource ID'} type="number" value={inputs.resourceId} onChange={(value) => setInputs((current) => ({ ...current, resourceId: value }))} /> : null}
-        {kind === 'ai-usage' ? <FilterInput label="Module" value={inputs.module} onChange={(value) => setInputs((current) => ({ ...current, module: value }))} /> : null}
-        {kind === 'ai-actions' ? <FilterSelect label="Assistant" value={inputs.assistantKey} options={['ADMIN_ASSISTANT', 'LAB_ASSISTANT', 'RESEARCH_ASSISTANT']} onChange={(value) => setInputs((current) => ({ ...current, assistantKey: value }))} /> : null}
-        {kind === 'ai-actions' ? <FilterSelect label="Resource type" value={inputs.resourceType} options={['SYSTEM', 'AUDIT_LOG', 'USER_ACCOUNT', 'SYSTEM_CONFIG', 'LABORATORY', 'TIME_SLOT', 'BOOKING', 'PROJECT', 'GROUP', 'TASK', 'REPORT']} onChange={(value) => setInputs((current) => ({ ...current, resourceType: value }))} /> : null}
+        <FilterInput label="Mã người dùng" type="number" value={inputs.userId} onChange={(value) => setInputs((current) => ({ ...current, userId: value }))} />
+        {kind !== 'ai-actions' ? <FilterInput label="Mã PTN" type="number" value={inputs.labId} onChange={(value) => setInputs((current) => ({ ...current, labId: value }))} /> : null}
+        {kind !== 'ai-usage' ? <FilterInput label={kind === 'face-checkins' ? 'Mã lượt đặt' : 'Mã tài nguyên'} type="number" value={inputs.resourceId} onChange={(value) => setInputs((current) => ({ ...current, resourceId: value }))} /> : null}
+        {kind === 'ai-usage' ? <FilterInput label="Phân hệ" value={inputs.module} onChange={(value) => setInputs((current) => ({ ...current, module: value }))} /> : null}
+        {kind === 'ai-actions' ? <FilterSelect label="Trợ lý" value={inputs.assistantKey} options={['ADMIN_ASSISTANT', 'LAB_ASSISTANT', 'RESEARCH_ASSISTANT']} onChange={(value) => setInputs((current) => ({ ...current, assistantKey: value }))} /> : null}
+        {kind === 'ai-actions' ? <FilterSelect label="Loại tài nguyên" value={inputs.resourceType} options={['SYSTEM', 'AUDIT_LOG', 'USER_ACCOUNT', 'SYSTEM_CONFIG', 'LABORATORY', 'TIME_SLOT', 'BOOKING', 'PROJECT', 'GROUP', 'TASK', 'REPORT']} onChange={(value) => setInputs((current) => ({ ...current, resourceType: value }))} /> : null}
         {kind === 'face-checkins' ? <FilterSelect label="Kết quả" value={inputs.result} options={['SUCCESS', 'FAILED', 'DENIED']} onChange={(value) => setInputs((current) => ({ ...current, result: value }))} /> : null}
         <FilterInput label="Từ ngày" type="date" value={inputs.from} onChange={(value) => setInputs((current) => ({ ...current, from: value }))} />
         <FilterInput label="Đến ngày" type="date" value={inputs.to} onChange={(value) => setInputs((current) => ({ ...current, to: value }))} />

@@ -32,7 +32,7 @@ const SIZE_CLASSES: Record<ModalSize, string> = {
 
 export function Modal({
   backdropBlur = false,
-  centered = false,
+  centered = true,
   children,
   closeDisabled = false,
   closeLabel = 'Đóng',
@@ -109,12 +109,12 @@ export function Modal({
   }
 
   return (
-    <div className={`fixed inset-0 z-modal flex justify-center overflow-y-auto overscroll-contain bg-slate-950/55 p-2 sm:px-4 sm:py-6 ${centered ? 'items-center' : 'items-start'} ${backdropBlur ? 'backdrop-blur-sm' : ''}`}>
+    <div className={`fixed inset-0 z-modal flex justify-center overflow-y-auto overscroll-contain bg-slate-950/55 p-3 sm:p-6 ${centered ? 'items-center' : 'items-start'} ${backdropBlur ? 'backdrop-blur-sm' : ''}`}>
       <section
         ref={dialogRef}
         aria-labelledby={titleId}
         aria-modal="true"
-        className={`flex max-h-[calc(100dvh-1rem)] min-w-0 w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[90vh] ${SIZE_CLASSES[size]}`}
+        className={`flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[calc(100dvh-3rem)] ${SIZE_CLASSES[size]}`}
         role="dialog"
         tabIndex={-1}
       >

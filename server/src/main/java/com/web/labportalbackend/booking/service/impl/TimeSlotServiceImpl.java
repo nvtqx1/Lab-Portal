@@ -49,7 +49,7 @@ public class TimeSlotServiceImpl implements TimeSlotService {
     private static final List<TimeSlotStatus> HIDDEN_SLOT_STATUSES =
             List.of(TimeSlotStatus.CANCELLED, TimeSlotStatus.CLOSED, TimeSlotStatus.EXPIRED,
                     TimeSlotStatus.INACTIVE, TimeSlotStatus.ARCHIVED);
-    private static final List<TimeSlotStatus> MANAGER_HIDDEN_SLOT_STATUSES =
+    private static final List<TimeSlotStatus> TERMINAL_SLOT_STATUSES =
             List.of(TimeSlotStatus.CANCELLED, TimeSlotStatus.CLOSED,
                     TimeSlotStatus.INACTIVE, TimeSlotStatus.ARCHIVED);
 
@@ -111,7 +111,7 @@ public class TimeSlotServiceImpl implements TimeSlotService {
         List<TimeSlotStatus> hiddenStatuses;
         if (currentUser.hasRole("LAB_MANAGER")) {
             hiddenStatuses = bookingConfig.hideCancelledSlots()
-                    ? MANAGER_HIDDEN_SLOT_STATUSES
+                    ? TERMINAL_SLOT_STATUSES
                     : List.of(TimeSlotStatus.CLOSED, TimeSlotStatus.INACTIVE, TimeSlotStatus.ARCHIVED);
         } else {
             hiddenStatuses = bookingConfig.hideCancelledSlots()
@@ -120,6 +120,24 @@ public class TimeSlotServiceImpl implements TimeSlotService {
                             TimeSlotStatus.INACTIVE, TimeSlotStatus.ARCHIVED);
         }
         List<TimeSlot> slots = timeSlotRepository.findUsableByLabId(labId, cutoff, hiddenStatuses);
+        return toResponses(slots);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimeSlotResponse> getSlotHistoryByLab(Long labId) {
+        Laboratory lab = laboratoryRepository.findById(labId)
+                .orElseThrow(() -> new EntityNotFoundException("Lab not found: " + labId));
+        User currentUser = getCurrentUser();
+        if (!currentUser.hasRole("LAB_MANAGER")) {
+            throw new AccessDeniedException("Only lab managers can view time slot history");
+        }
+        assertManagerOwnsLab(currentUser, lab);
+        return toResponses(timeSlotRepository.findHistoryByLabId(
+                labId, Instant.now(), TERMINAL_SLOT_STATUSES));
+    }
+
+    private List<TimeSlotResponse> toResponses(List<TimeSlot> slots) {
         if (slots.isEmpty()) {
             return List.of();
         }
@@ -280,10 +298,11 @@ public class TimeSlotServiceImpl implements TimeSlotService {
         }
 
         boolean hasOverlap = !timeSlotRepository
-                .findOverlappingSlots(lab.getId(), request.getStartTime(), request.getEndTime())
+                .findOverlappingSlots(lab.getId(), request.getStartTime(), request.getEndTime(),
+                        TERMINAL_SLOT_STATUSES)
                 .isEmpty();
         if (hasOverlap) {
-            throw new IllegalStateException("Time slot overlaps with an existing slot in this lab");
+            throw new IllegalStateException("Khung giờ này bị trùng với một ca sử dụng đang hoạt động");
         }
     }
 

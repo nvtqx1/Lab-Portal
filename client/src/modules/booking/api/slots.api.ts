@@ -60,6 +60,11 @@ export async function getLabSlots(labId: number): Promise<RawSlotResponse[]> {
   return unwrapSlots(response.data);
 }
 
+export async function getLabSlotHistory(labId: number): Promise<RawSlotResponse[]> {
+  const response = await apiClient.get<SlotApiPayload>(`/api/labs/${labId}/slots/history`);
+  return unwrapSlots(response.data);
+}
+
 export async function createSlot(payload: CreateSlotPayload): Promise<RawSlotResponse> {
   const response = await apiClient.post<Response<RawSlotResponse>>('/api/slots', payload);
   return response.data.data;

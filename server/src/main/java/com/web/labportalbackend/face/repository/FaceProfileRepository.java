@@ -21,4 +21,6 @@ public interface FaceProfileRepository extends JpaRepository<FaceProfileEntity, 
     Optional<FaceProfileEntity> findByUserIdAndDeletedFalse(Long userId);
     Optional<FaceProfileEntity> findByUserIdAndProfileStatusAndActiveTrueAndDeletedFalse(
             Long userId, FaceProfileStatus profileStatus);
+    List<FaceProfileEntity> findAllByUserIdInAndProfileStatusAndActiveTrueAndDeletedFalse(
+            List<Long> userIds, FaceProfileStatus profileStatus);
 }

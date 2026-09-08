@@ -93,14 +93,14 @@ class FaceProfileControllerTest {
     @Test
     void managerCanSubmitCameraFaceCheckinContract() throws Exception {
         when(faceCheckinService.checkIn(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new FaceCheckinResponse(11L, true, "MATCH", 0.91, 0.88,
+                .thenReturn(new FaceCheckinResponse(11L, 7L, "Trung Nguyễn", true, "MATCH", 0.91, 0.88,
                         null, Instant.parse("2026-08-31T00:00:00Z")));
 
         mockMvc.perform(post("/api/face/check-in").contextPath("/api")
                         .with(csrf()).with(user("manager").roles("LAB_MANAGER"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bookingId":11,"imageBase64":"aW1hZ2U=","contentType":"image/jpeg",
+                                {"slotId":21,"imageBase64":"aW1hZ2U=","contentType":"image/jpeg",
                                  "challengeToken":"signed-challenge","challengeFrames":[
                                    {"imageBase64":"aW1hZ2U=","contentType":"image/jpeg"},
                                    {"imageBase64":"aW1hZ2U=","contentType":"image/jpeg"},
@@ -109,6 +109,7 @@ class FaceProfileControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.bookingId").value(11))
+                .andExpect(jsonPath("$.data.studentName").value("Trung Nguyễn"))
                 .andExpect(jsonPath("$.data.checkedIn").value(true))
                 .andExpect(jsonPath("$.data.result").value("MATCH"));
     }
@@ -119,7 +120,7 @@ class FaceProfileControllerTest {
                         .with(csrf()).with(user("student").roles("STUDENT"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bookingId":11,"imageBase64":"aW1hZ2U=","contentType":"image/jpeg",
+                                {"slotId":21,"imageBase64":"aW1hZ2U=","contentType":"image/jpeg",
                                  "challengeToken":"signed-challenge","challengeFrames":[
                                    {"imageBase64":"aW1hZ2U=","contentType":"image/jpeg"},
                                    {"imageBase64":"aW1hZ2U=","contentType":"image/jpeg"},

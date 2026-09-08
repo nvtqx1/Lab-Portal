@@ -120,6 +120,41 @@ def test_planner_preserves_a_clarification_without_selecting_a_tool() -> None:
     assert result.tool_request is None
 
 
+def test_authorized_lab_knowledge_question_can_route_to_policy_read() -> None:
+    backend = StubBackend(
+        '{"decision":"TOOL_REQUEST","intent":"READ","candidateIndex":0,"message":null}'
+    )
+    request = ToolPlanningRequest.model_validate(
+        {
+            "input": "Nhiệt độ phù hợp để in vật liệu PLA là bao nhiêu?",
+            "candidates": [
+                {
+                    "assistantKey": "LAB_ASSISTANT",
+                    "schemaVersion": "v1",
+                    "toolId": "lab.policy.read",
+                    "description": (
+                        "Answer informational questions from authorized knowledge documents for managed "
+                        "Lab AI Research Lab, including equipment and materials"
+                    ),
+                    "resource": {"resourceType": "LABORATORY", "resourceId": 1},
+                    "parentResource": None,
+                }
+            ],
+        }
+    )
+
+    result = ToolPlanner(backend).plan(request)
+
+    assert result.decision == "TOOL_REQUEST"
+    assert result.tool_request is not None
+    assert result.tool_request.tool_id == "lab.policy.read"
+    assert result.tool_request.arguments == {
+        "resource": {"resourceType": "LABORATORY", "resourceId": 1}
+    }
+    assert backend.messages is not None
+    assert "authorized Lab knowledge documents" in backend.messages[0]["content"]
+
+
 def test_manager_create_shift_request_prefers_create_draft_over_read_only_tool() -> None:
     backend = StubBackend(
         '{"decision":"TOOL_REQUEST","intent":"CREATE_SHIFT","candidateIndex":0,"message":null}'

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getStoredRole } from '../../../shared/api';
 import { Button, ConfirmDialog, EmptyState, ErrorState, Modal } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
+import { cameraErrorMessage, openCamera } from '../../../shared/utils';
 import { useProfile } from '../../user/hooks';
 import { getFaceGuidance, readFaceImage, startFaceChallenge } from '../api';
 import { useFaceProfile, useFaceProfileActions, useFaceProfiles } from '../hooks';
@@ -19,7 +20,9 @@ function errorMessage(error: unknown) {
     if (body?.message === 'Face service is temporarily unavailable') {
       return 'Dịch vụ nhận diện khuôn mặt đang tạm thời không khả dụng. Vui lòng thử lại sau.';
     }
-    return body?.message ?? 'Không thể cập nhật hồ sơ khuôn mặt.';
+    return body?.message === 'Camera API is unavailable'
+      ? 'Trình duyệt không hỗ trợ camera.'
+      : 'Không thể cập nhật hồ sơ khuôn mặt.';
   }
   return error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ khuôn mặt.';
 }
@@ -191,10 +194,7 @@ export function FaceProfilePage() {
     setImage(null);
     setPreviewUrl('');
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera API is unavailable');
-      }
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      streamRef.current = await openCamera('user');
       const nextChallenge = await startFaceChallenge(targetUserId);
       setChallenge(nextChallenge);
       actions.save.reset();
@@ -210,11 +210,11 @@ export function FaceProfilePage() {
       guidanceReadyRef.current = false;
       setCameraActive(true);
       setLocalError('');
-    } catch {
+    } catch (cameraError) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setChallenge(null);
-      setLocalError('Không thể mở camera. Hãy cấp quyền camera cho trình duyệt và thử lại.');
+      setLocalError(cameraErrorMessage(cameraError));
     }
   };
 
@@ -373,7 +373,7 @@ export function FaceProfilePage() {
       <header className="mb-6">
         <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><Shield aria-hidden="true" className="h-4 w-4" /> Sinh trắc học có kiểm soát</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">Hồ sơ khuôn mặt</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">Ảnh chỉ được gửi để tạo embedding. Spring lưu embedding đã mã hóa và quản lý đồng ý của người dùng.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">Ảnh chỉ được dùng để tạo mẫu nhận diện đã mã hóa và phục vụ check-in.</p>
       </header>
 
       {isAdmin ? (
@@ -447,7 +447,7 @@ export function FaceProfilePage() {
         closeOnEscape
         isOpen={cameraDialogOpen}
         onClose={closeCameraDialog}
-        size={faceSaveComplete ? 'lg' : image && !cameraActive ? '2xl' : 'full'}
+        size={faceSaveComplete ? 'lg' : '2xl'}
         subtitle={faceSaveComplete ? 'Kết quả đã được lưu an toàn vào hồ sơ.' : image && !cameraActive ? 'Kiểm tra kết quả trước khi lưu hồ sơ khuôn mặt.' : 'Giữ khuôn mặt giữa khung và làm theo hướng dẫn trên màn hình.'}
         title={faceSaveComplete ? 'Kết quả đăng ký khuôn mặt' : image && !cameraActive ? 'Kết quả chụp khuôn mặt' : 'Camera đăng ký khuôn mặt'}
       >
@@ -469,7 +469,7 @@ export function FaceProfilePage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[calc(72dvh*16/9)]">
+          <div className="mx-auto w-full max-w-4xl">
               <div className="relative aspect-video overflow-hidden rounded-md border border-slate-300 bg-slate-950 shadow-lg">
                 {cameraActive ? <video ref={videoRef} autoPlay muted playsInline aria-label="Hình ảnh trực tiếp từ camera" className="aspect-video w-full object-cover" onLoadedMetadata={() => setCameraReady(true)} /> : <div className="flex aspect-video items-center justify-center text-slate-400"><Camera aria-hidden="true" className="h-16 w-16" /></div>}
                 {cameraActive ? <div aria-hidden="true" className="pointer-events-none absolute inset-x-1/4 inset-y-4 rounded-full border-2 border-dashed border-white/90 shadow-[0_0_0_999px_rgba(15,23,42,0.28)]" /> : null}

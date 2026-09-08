@@ -45,10 +45,10 @@ public class FaceProfileController {
 
     @PostMapping("/check-in")
     @PreAuthorize("hasRole('LAB_MANAGER')")
-    @Operation(summary = "Check in an approved managed-lab booking using face matching")
+    @Operation(summary = "Identify and check in a registered student within the selected managed-lab slot")
     public ResponseEntity<Response<FaceCheckinResponse>> checkIn(
             @Valid @RequestBody FaceCheckinRequest request) {
-        return ResponseEntity.ok(Response.ok("Face check-in evaluated", faceCheckinService.checkIn(request)));
+        return ResponseEntity.ok(Response.ok("Đã hoàn tất đối chiếu khuôn mặt", faceCheckinService.checkIn(request)));
     }
 
     @GetMapping("/check-in/candidates")

@@ -44,6 +44,17 @@ public class TimeSlotController {
         return ResponseEntity.ok(Response.ok("Time slots retrieved successfully", slots));
     }
 
+    @GetMapping("/labs/{labId}/slots/history")
+    @PreAuthorize("hasRole('LAB_MANAGER')")
+    @Operation(summary = "Get managed laboratory time slot history",
+            description = "Retrieve ended or terminal time slots for the laboratory managed by the current user")
+    public ResponseEntity<Response<List<TimeSlotResponse>>> getSlotHistoryByLab(
+            @PathVariable Long labId
+    ) {
+        List<TimeSlotResponse> slots = timeSlotService.getSlotHistoryByLab(labId);
+        return ResponseEntity.ok(Response.ok("Đã tải lịch sử ca sử dụng", slots));
+    }
+
     @PostMapping("/slots")
     @PreAuthorize("hasRole('LAB_MANAGER')")
     @Operation(summary = "Create time slot", description = "Create a new lab time slot with capacity")

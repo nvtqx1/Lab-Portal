@@ -3,7 +3,7 @@ export function LabInfoPage() {
     <section className="space-y-6">
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Lab Manager
+          Quản lý PTN
         </p>
         <h2 className="mt-1 text-xl font-semibold text-slate-950">Thông tin PTN</h2>
         <p className="mt-2 text-sm text-slate-600">

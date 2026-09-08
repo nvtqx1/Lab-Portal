@@ -11,6 +11,7 @@ import java.util.List;
 public interface TimeSlotService {
     TimeSlotResponse createSlot(CreateTimeSlotRequest request);
     List<TimeSlotResponse> getSlotsByLab(Long labId);
+    List<TimeSlotResponse> getSlotHistoryByLab(Long labId);
     TimeSlotResponse getSlotById(Long slotId);
     TimeSlotResponse updateSlotStatus(Long slotId, String status);
     TimeSlotResponse cancelSlot(Long slotId, CancelTimeSlotRequest request);

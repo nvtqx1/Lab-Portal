@@ -103,7 +103,7 @@ public class AiRagRetrievalServiceImpl implements AiRagRetrievalService {
             case PROJECT_MEMBERS -> domain == com.web.labportalbackend.ai.enums.AiAssistantDomain.RESEARCH
                     && chunk.getLabId() != null && chunk.getProjectId() != null && chunk.getGroupId() == null;
             case GROUP_MEMBERS -> domain == com.web.labportalbackend.ai.enums.AiAssistantDomain.RESEARCH
-                    && chunk.getLabId() != null && chunk.getProjectId() != null && chunk.getGroupId() != null;
+                    && chunk.getLabId() != null && chunk.getGroupId() != null;
             case OWNER -> chunk.getGroupId() == null || chunk.getProjectId() != null;
         };
     }

@@ -80,6 +80,9 @@ class AiToolCandidateCatalogServiceImplTest {
                         AiToolId.LAB_OWN_BOOKING_READ),
                 candidates.stream().map(candidate -> candidate.toolId()).toList());
         assertTrue(candidates.stream().allMatch(candidate -> candidate.description().length() <= 512));
+        assertTrue(candidates.stream()
+                .filter(candidate -> candidate.toolId() == AiToolId.LAB_POLICY_READ)
+                .allMatch(candidate -> candidate.description().contains("authorized knowledge documents")));
     }
 
     @Test
@@ -105,6 +108,9 @@ class AiToolCandidateCatalogServiceImplTest {
                         AiToolId.LAB_SHIFT_CREATE_DRAFT, AiToolId.LAB_POLICY_READ),
                 candidates.stream().map(candidate -> candidate.toolId()).toList());
         assertTrue(candidates.stream().allMatch(candidate -> candidate.resource().resourceId().equals(10L)));
+        assertTrue(candidates.stream()
+                .filter(candidate -> candidate.toolId() == AiToolId.LAB_POLICY_READ)
+                .allMatch(candidate -> candidate.description().contains("authorized knowledge documents")));
         verifyNoInteractions(bookingRepository);
     }
 }

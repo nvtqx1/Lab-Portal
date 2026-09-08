@@ -65,6 +65,13 @@ function responseLabel(response: UnifiedChatResponse) {
   return 'Câu trả lời';
 }
 
+function assistantDisplayName(key: string) {
+  if (key === 'ADMIN_ASSISTANT') return 'Trợ lý quản trị';
+  if (key === 'LAB_ASSISTANT') return 'Trợ lý PTN';
+  if (key === 'RESEARCH_ASSISTANT') return 'Trợ lý nghiên cứu';
+  return 'Trợ lý AI';
+}
+
 function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
   response: UnifiedChatResponse;
   actionError?: string;
@@ -77,19 +84,19 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
         <span className="rounded-full bg-slate-200 px-2 py-1 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           {responseLabel(response)}
         </span>
-        {response.assistantKey ? <span className="text-slate-500 dark:text-slate-400">{response.assistantKey}</span> : null}
+        {response.assistantKey ? <span className="text-slate-500 dark:text-slate-400">{assistantDisplayName(response.assistantKey)}</span> : null}
       </div>
       <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-slate-200">{response.answer}</p>
       {response.actionPreview ? (
         <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-          <p className="flex items-center gap-2 font-semibold"><CalendarClock aria-hidden="true" className="h-4 w-4" /> Xem trước ca Lab</p>
+          <p className="flex items-center gap-2 font-semibold"><CalendarClock aria-hidden="true" className="h-4 w-4" /> Xem trước ca PTN</p>
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Lab</dt><dd className="mt-1 font-medium">{response.actionPreview.labName ?? `#${response.actionPreview.labId}`}</dd></div>
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">PTN</dt><dd className="mt-1 font-medium">{response.actionPreview.labName ?? `PTN #${response.actionPreview.labId}`}</dd></div>
             <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Sức chứa</dt><dd className="mt-1 font-medium">{response.actionPreview.capacity} người</dd></div>
             <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Bắt đầu</dt><dd className="mt-1 font-medium">{new Date(response.actionPreview.startTime).toLocaleString('vi-VN')}</dd></div>
             <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Kết thúc</dt><dd className="mt-1 font-medium">{new Date(response.actionPreview.endTime).toLocaleString('vi-VN')}</dd></div>
           </dl>
-          <p className="mt-3 text-xs">Chưa có dữ liệu nào được ghi. Backend sẽ kiểm tra lại quyền và trạng thái khi bạn xác nhận.</p>
+          <p className="mt-3 text-xs">Chưa có dữ liệu nào được ghi. Hệ thống sẽ kiểm tra quyền và trạng thái khi bạn xác nhận.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button disabled={actionPending} onClick={() => onResolve(response.actionPreview!.suggestionId, 'confirm')} type="button">
               <Check aria-hidden="true" className="h-4 w-4" /> Xác nhận tạo ca
@@ -253,7 +260,7 @@ export function AssistantPage() {
                 ...turn.response,
                 type: 'ACTION_RESULT',
                 answer: actionResult.status === 'EXECUTED'
-                  ? `Đã tạo ca Lab thành công (mã ca #${actionResult.targetId}).`
+                  ? `Đã tạo ca PTN thành công (mã ca #${actionResult.targetId}).`
                   : 'Đã hủy bản xem trước. Không có dữ liệu nào được ghi.',
                 actionPreview: null,
                 actionResult,
@@ -282,9 +289,8 @@ export function AssistantPage() {
   return (
     <section className="mx-auto max-w-6xl">
       <header className="mb-6">
-        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><Bot aria-hidden="true" className="h-4 w-4" /> Smart Research Lab</p>
+        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><Bot aria-hidden="true" className="h-4 w-4" /> Trợ lý PTN</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">Hỏi đáp với trợ lý AI</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">Chỉ cần nhập câu hỏi. Spring tự xác định nghiệp vụ, dữ liệu và quyền được phép trước khi gọi model.</p>
       </header>
 
       <div className="grid min-h-[680px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[260px_minmax(0,1fr)]">
@@ -332,11 +338,6 @@ export function AssistantPage() {
         </aside>
 
         <div className="flex min-w-0 flex-col">
-          <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 sm:px-6">
-            <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
-            Không cần chọn chủ đề hoặc tài nguyên; backend kiểm tra lại quyền cho từng yêu cầu.
-          </div>
-
           <div ref={scrollRef} aria-live="polite" className="max-h-[65vh] flex-1 space-y-5 overflow-y-auto bg-slate-50/40 p-4 dark:bg-slate-950/20 sm:p-6">
           {conversation.hasNextPage ? (
             <div className="flex justify-center">
@@ -356,7 +357,7 @@ export function AssistantPage() {
             <div className="flex min-h-96 flex-col items-center justify-center text-center">
               <Sparkles aria-hidden="true" className="h-9 w-9 text-slate-400" />
               <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-white">Bạn muốn biết điều gì?</h2>
-              <p className="mt-2 max-w-lg text-sm leading-6 text-slate-600 dark:text-slate-300">Hỏi bằng ngôn ngữ tự nhiên về hệ thống, phòng thí nghiệm, booking hoặc nghiên cứu trong phạm vi quyền của bạn.</p>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-slate-600 dark:text-slate-300">Hỏi bằng ngôn ngữ tự nhiên về hệ thống, phòng thí nghiệm, lượt đặt hoặc nghiên cứu.</p>
             </div>
           ) : turns.map((turn) => (
             <article className="space-y-3" key={turn.id}>

@@ -33,7 +33,7 @@ export interface AiActionLog {
 }
 
 export interface FaceCheckinLog {
-  id: number; bookingId: number; userId: number; labId: number; method: string; result: string;
+  id: number; bookingId: number; userId: number; studentName: string | null; labId: number; method: string; result: string;
   failureReason: string | null; createdAt: string;
 }
 
