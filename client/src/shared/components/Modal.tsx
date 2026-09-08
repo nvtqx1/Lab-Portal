@@ -1,4 +1,5 @@
-import { useEffect, useId } from 'react';
+import { X } from 'lucide-react';
+import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { Button } from './Button';
@@ -35,7 +36,7 @@ export function Modal({
   children,
   closeDisabled = false,
   closeLabel = 'Đóng',
-  closeOnEscape = false,
+  closeOnEscape = true,
   footer,
   isOpen = true,
   onClose,
@@ -44,50 +45,96 @@ export function Modal({
   size = 'md',
 }: ModalProps) {
   const titleId = useId();
+  const dialogRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  const closeDisabledRef = useRef(closeDisabled);
+  const closeOnEscapeRef = useRef(closeOnEscape);
+  onCloseRef.current = onClose;
+  closeDisabledRef.current = closeDisabled;
+  closeOnEscapeRef.current = closeOnEscape;
 
   useEffect(() => {
-    if (!isOpen || !closeOnEscape) {
+    if (!isOpen) {
       return undefined;
     }
 
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusableSelector = [
+      'button:not([disabled])',
+      'a[href]',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    const focusFirstControl = window.requestAnimationFrame(() => {
+      dialogRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
+    });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !closeDisabled) {
-        onClose();
+      if (event.key === 'Escape' && closeOnEscapeRef.current && !closeDisabledRef.current) {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const controls = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector));
+      if (controls.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeDisabled, closeOnEscape, isOpen, onClose]);
+    return () => {
+      window.cancelAnimationFrame(focusFirstControl);
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
   }
 
   return (
-    <div className={`fixed inset-0 z-50 flex justify-center overflow-y-auto overscroll-contain bg-slate-950/45 p-2 sm:px-4 sm:py-6 ${centered ? 'items-center' : 'items-start'} ${backdropBlur ? 'backdrop-blur-sm' : ''}`}>
+    <div className={`fixed inset-0 z-modal flex justify-center overflow-y-auto overscroll-contain bg-slate-950/55 p-2 sm:px-4 sm:py-6 ${centered ? 'items-center' : 'items-start'} ${backdropBlur ? 'backdrop-blur-sm' : ''}`}>
       <section
+        ref={dialogRef}
         aria-labelledby={titleId}
         aria-modal="true"
-        className={`flex max-h-[calc(100dvh-1rem)] min-w-0 w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-h-[90vh] ${SIZE_CLASSES[size]}`}
+        className={`flex max-h-[calc(100dvh-1rem)] min-w-0 w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[90vh] ${SIZE_CLASSES[size]}`}
         role="dialog"
+        tabIndex={-1}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-slate-950" id={titleId}>
+            <h3 className="text-lg font-semibold text-slate-950 dark:text-white" id={titleId}>
               {title}
             </h3>
-            {subtitle ? <div className="mt-1 text-sm text-slate-600">{subtitle}</div> : null}
+            {subtitle ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{subtitle}</div> : null}
           </div>
           <Button aria-label={closeLabel} disabled={closeDisabled} onClick={onClose} size="sm" variant="ghost">
-            {closeLabel}
+            <X aria-hidden="true" className="h-5 w-5" />
+            <span className="sr-only">{closeLabel}</span>
           </Button>
         </header>
         <div className="min-h-0 min-w-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           {children}
         </div>
         {footer ? (
-          <footer className="flex shrink-0 flex-col-reverse justify-end gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:flex-row sm:px-6 sm:py-4">
+          <footer className="flex shrink-0 flex-col-reverse justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:px-6 sm:py-4">
             {footer}
           </footer>
         ) : null}

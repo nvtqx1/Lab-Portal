@@ -59,10 +59,10 @@ export function ToastContainer() {
   }
 
   return (
-    <div className="toast-enter fixed inset-x-3 bottom-3 z-[60] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-96 sm:max-w-[calc(100vw-2rem)]">
+    <div className="toast-enter fixed inset-x-3 bottom-3 z-toast sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-96 sm:max-w-[calc(100vw-2rem)]">
       <div
         className={[
-          'relative break-words rounded-md border px-4 py-3 pr-11 text-sm shadow-lg',
+          'relative break-words rounded-xl border px-4 py-3 pr-14 text-sm shadow-lg',
           VARIANT_CLASSES[toast.variant],
         ].join(' ')}
         role={toast.variant === 'error' ? 'alert' : 'status'}
@@ -71,7 +71,7 @@ export function ToastContainer() {
         <p className="mt-1">{toast.message}</p>
         <button
           aria-label="Đóng thông báo"
-          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+          className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
           type="button"
           onClick={() => setToast(null)}
         >
