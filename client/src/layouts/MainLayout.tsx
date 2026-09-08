@@ -192,10 +192,16 @@ export function MainLayout() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-900">
+      <a
+        className="fixed left-4 top-3 z-toast -translate-y-20 rounded-lg bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-transform focus:translate-y-0"
+        href="#main-content"
+      >
+        Bỏ qua menu
+      </a>
       <div
         aria-hidden={!isNavOpen}
         className={[
-          'fixed inset-0 z-40 transition-opacity duration-200',
+          'fixed inset-0 z-navigation transition-opacity duration-200 lg:hidden',
           isNavOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
         ].join(' ')}
       >
@@ -240,7 +246,16 @@ export function MainLayout() {
           </aside>
       </div>
 
-      <div className="min-w-0">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-y-auto border-r border-slate-200 bg-white px-4 py-6 lg:block">
+        <SidebarContent
+          navItems={navItems}
+          portalTitle={portalTitle}
+          roleLabel={roleLabel}
+          onNavigate={() => undefined}
+        />
+      </aside>
+
+      <div className="min-w-0 lg:pl-64">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:px-8">
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -248,7 +263,7 @@ export function MainLayout() {
                 aria-label="Mở menu"
                 aria-controls="main-navigation-drawer"
                 aria-expanded={isNavOpen}
-                className="shrink-0"
+                className="shrink-0 lg:hidden"
                 size="sm"
                 variant="outline"
                 onClick={() => setIsNavOpen(true)}
@@ -267,7 +282,7 @@ export function MainLayout() {
             <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 sm:gap-3">
               <button
                 aria-label={unreadCount > 0 ? `Thông báo, ${unreadCount} chưa đọc` : 'Thông báo'}
-                className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:translate-y-0"
+                className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors duration-200 hover:border-slate-300 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 type="button"
                 onClick={() => navigate('/app/notifications')}
               >
@@ -294,7 +309,7 @@ export function MainLayout() {
           </div>
         </header>
 
-        <main className="mx-auto min-w-0 max-w-[1600px] px-4 py-6 sm:py-8 lg:px-8">
+        <main className="mx-auto min-w-0 max-w-[1600px] px-4 py-6 sm:py-8 lg:px-8" id="main-content" tabIndex={-1}>
           <div className={location.pathname.startsWith('/app/research') ? '' : 'page-enter'} key={location.pathname}>
             {shouldShowManagedLabEmptyState ? <EmptyManagedLabState /> : <Outlet />}
           </div>

@@ -22,7 +22,8 @@ class Backend:
 
 def patch(**updates):
     result = dict(kind="LAB_SHIFT_CREATE_INTERPRETATION", labRef=10, requestedLabName=None,
-                  mode="CONTINUE", date=None, startTime=None, endTime="11:00:00",
+                  mode="CONTINUE", dateMention=None,
+                  timeMentions=[dict(role="END", hour=11, minute=0)],
                   capacity=None, timeZone=None, clearFields=[], requiresHumanReview=True)
     result.update(updates)
     return result
@@ -56,7 +57,7 @@ def test_user_embedded_protocol_marker_does_not_enable_protocol():
 
 
 def test_closed_request_prose_cannot_supply_interpreter_values():
-    backend = Backend(json.dumps(patch(mode="NEW", endTime=None)))
+    backend = Backend(json.dumps(patch(mode="NEW", timeMentions=[])))
     envelope = dict(dialogueVersion=1, message="11h", pendingState=None,
                     history=[dict(role="USER", content="Create shift tomorrow at 9"),
                              dict(role="ASSISTANT", content="Cancelled")])
@@ -133,7 +134,7 @@ def test_continuation_without_active_request_is_rejected():
 
 
 def test_empty_continuation_patch_is_retried_instead_of_repeating_question():
-    backend = Backend(json.dumps(patch(endTime=None)))
+    backend = Backend(json.dumps(patch(timeMentions=[])))
     result = interpret_shift(backend, json.dumps(dict(dialogueVersion=1, message="11h",
         pendingState=dict(labId=10, endTime=None), missingFields=["endTime"], lastAskedField="endTime")), 10)
     assert result.metadata == {"safeRefusal": True}
@@ -142,8 +143,9 @@ def test_empty_continuation_patch_is_retried_instead_of_repeating_question():
 
 def test_extraction_prompt_does_not_require_or_invent_a_lab_name():
     backend = Backend(json.dumps(patch(
-        requestedLabName=None, mode="NEW", date="2026-09-27",
-        startTime="09:00:00", endTime="11:00:00",
+        requestedLabName=None, mode="NEW",
+        dateMention=dict(day=27, month=9, year=2026),
+        timeMentions=[dict(role="START", hour=9, minute=0), dict(role="END", hour=11, minute=0)],
     )))
     envelope = dict(
         dialogueVersion=1,
@@ -159,9 +161,31 @@ def test_extraction_prompt_does_not_require_or_invent_a_lab_name():
     assert "requestedLabName is optional" in prompt
     assert "generic word 'Lab' alone is not a Lab name" in prompt
     assert "day/month[/year]" in prompt
-    assert "never month/day" in prompt
-    assert "message containing only an end-time expression" in prompt
-    assert "next occurrence on or after temporalContext.currentDate" in prompt
+    assert "calendar components without reordering" in prompt
+    assert "Do not convert an END expression into START" in prompt
+    assert "Spring owns calendar construction" in prompt
     assert "defaults, not fixed restrictions" in prompt
     assert "AI Research Lab" not in prompt
     assert json.loads(backend.messages[1]["content"])["message"] == envelope["message"]
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("Tạo ca ngày 30/09/2026, kết thúc lúc 11h.",
+     patch(mode="NEW", dateMention=dict(day=30, month=9, year=2026),
+           timeMentions=[dict(role="END", hour=11, minute=0)])),
+    ("Tạo ca ngày 04/10 từ 13h đến 15h.",
+     patch(mode="NEW", dateMention=dict(day=4, month=10, year=None),
+           timeMentions=[dict(role="START", hour=13, minute=0), dict(role="END", hour=15, minute=0)])),
+])
+def test_semantic_date_components_and_time_roles_are_preserved(message, expected):
+    backend = Backend(json.dumps(expected))
+    envelope = dict(
+        dialogueVersion=1,
+        message=message,
+        pendingState=None,
+        temporalContext=dict(currentDate="2026-09-08", defaultTimeZone="Asia/Ho_Chi_Minh"),
+    )
+
+    response = interpret_shift(backend, json.dumps(envelope), 10)
+
+    assert json.loads(response.answer) == expected

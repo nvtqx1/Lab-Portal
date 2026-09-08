@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Bot, BookOpen, CalendarClock, Check, MessageSquare, Plus, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { Bot, BookOpen, CalendarClock, Check, LoaderCircle, MessageSquare, Plus, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button, ConfirmDialog, toast } from '../../../shared/components';
@@ -81,13 +81,13 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
       </div>
       <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-slate-200">{response.answer}</p>
       {response.actionPreview ? (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="flex items-center gap-2 font-semibold"><CalendarClock aria-hidden="true" className="h-4 w-4" /> Xem trước ca Lab</p>
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div><dt className="text-xs opacity-70">Lab</dt><dd>{response.actionPreview.labName ?? `#${response.actionPreview.labId}`}</dd></div>
-            <div><dt className="text-xs opacity-70">Sức chứa</dt><dd>{response.actionPreview.capacity} người</dd></div>
-            <div><dt className="text-xs opacity-70">Bắt đầu</dt><dd>{new Date(response.actionPreview.startTime).toLocaleString('vi-VN')}</dd></div>
-            <div><dt className="text-xs opacity-70">Kết thúc</dt><dd>{new Date(response.actionPreview.endTime).toLocaleString('vi-VN')}</dd></div>
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Lab</dt><dd className="mt-1 font-medium">{response.actionPreview.labName ?? `#${response.actionPreview.labId}`}</dd></div>
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Sức chứa</dt><dd className="mt-1 font-medium">{response.actionPreview.capacity} người</dd></div>
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Bắt đầu</dt><dd className="mt-1 font-medium">{new Date(response.actionPreview.startTime).toLocaleString('vi-VN')}</dd></div>
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-950/30"><dt className="text-xs opacity-70">Kết thúc</dt><dd className="mt-1 font-medium">{new Date(response.actionPreview.endTime).toLocaleString('vi-VN')}</dd></div>
           </dl>
           <p className="mt-3 text-xs">Chưa có dữ liệu nào được ghi. Backend sẽ kiểm tra lại quyền và trạng thái khi bạn xác nhận.</p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -104,10 +104,15 @@ function AssistantAnswer({ response, actionError, actionPending, onResolve }: {
       {!response.actionPreview && actionError ? (
         <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{actionError}</p>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
-        <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Prompt: {response.promptTokens} tokens</span>
-        <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Completion: {response.completionTokens} tokens</span>
-      </div>
+      <details className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        <summary className="min-h-11 w-fit cursor-pointer rounded-lg py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
+          Chi tiết kỹ thuật
+        </summary>
+        <div className="flex flex-wrap gap-2 pb-1">
+          <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Prompt: {response.promptTokens} tokens</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">Completion: {response.completionTokens} tokens</span>
+        </div>
+      </details>
       {response.citations.length ? (
         <details className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-800">
           <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -159,7 +164,8 @@ export function AssistantPage() {
       }
       return;
     }
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    conversationEndRef.current?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
   }, [turns]);
 
   const loadOlderMessages = async () => {
@@ -274,14 +280,14 @@ export function AssistantPage() {
   };
 
   return (
-    <section className="mx-auto max-w-5xl">
+    <section className="mx-auto max-w-6xl">
       <header className="mb-6">
         <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><Bot aria-hidden="true" className="h-4 w-4" /> Smart Research Lab</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">Hỏi đáp với trợ lý AI</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">Chỉ cần nhập câu hỏi. Spring tự xác định nghiệp vụ, dữ liệu và quyền được phép trước khi gọi model.</p>
       </header>
 
-      <div className="grid min-h-[680px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[240px_minmax(0,1fr)]">
+      <div className="grid min-h-[680px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="border-b border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 md:border-b-0 md:border-r">
           <Button disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending} className="w-full" onClick={startNewConversation} type="button" variant="outline">
             <Plus aria-hidden="true" className="h-4 w-4" /> Cuộc trò chuyện mới
@@ -289,7 +295,7 @@ export function AssistantPage() {
           <div className="mt-3 max-h-40 space-y-1 overflow-y-auto md:max-h-[600px]">
             {conversations.data?.map((item) => (
               <div
-                className={`flex w-full items-start gap-2 rounded-md pr-2 text-left text-sm transition ${
+                className={`flex min-h-11 w-full items-start gap-1 rounded-lg pr-1 text-left text-sm transition-colors duration-200 ${
                   conversationId === item.id
                     ? 'bg-slate-200 text-slate-950 dark:bg-slate-800 dark:text-white'
                     : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900'
@@ -297,7 +303,8 @@ export function AssistantPage() {
                 key={item.id}
               >
                 <button
-                  className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left"
+                  aria-current={conversationId === item.id ? 'page' : undefined}
+                  className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
                   disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending}
                   onClick={() => openConversation(item.id)}
                   type="button"
@@ -305,10 +312,10 @@ export function AssistantPage() {
                   <MessageSquare aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                   <span className="line-clamp-2">{item.title}</span>
                 </button>
-                <span className="ml-auto mt-1 flex shrink-0 gap-1">
+                <span className="ml-auto flex shrink-0 gap-1">
                   <button
                     aria-label={`Xóa cuộc trò chuyện: ${item.title}`}
-                    className="rounded p-1 text-slate-400 hover:bg-red-100 hover:text-red-700"
+                    className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition-colors duration-200 hover:bg-red-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                     disabled={chatMutation.isPending || actionMutation.isPending || deleteConversationMutation.isPending}
                     onClick={() => handleDeleteConversation(item.id)}
                     type="button"
@@ -319,7 +326,7 @@ export function AssistantPage() {
               </div>
             ))}
             {conversations.isLoading ? (
-              <p className="px-3 py-2 text-xs text-slate-500">Đang tải lịch sử…</p>
+              <p className="flex min-h-11 items-center gap-2 px-3 py-2 text-xs text-slate-500" role="status"><LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> Đang tải lịch sử…</p>
             ) : null}
           </div>
         </aside>
@@ -330,7 +337,7 @@ export function AssistantPage() {
             Không cần chọn chủ đề hoặc tài nguyên; backend kiểm tra lại quyền cho từng yêu cầu.
           </div>
 
-          <div ref={scrollRef} aria-live="polite" className="max-h-[65vh] flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+          <div ref={scrollRef} aria-live="polite" className="max-h-[65vh] flex-1 space-y-5 overflow-y-auto bg-slate-50/40 p-4 dark:bg-slate-950/20 sm:p-6">
           {conversation.hasNextPage ? (
             <div className="flex justify-center">
               <Button
@@ -367,7 +374,7 @@ export function AssistantPage() {
                 /> : turn.error ? (
                   <p className="text-sm leading-6 text-red-700 dark:text-red-300" role="alert">{turn.error}</p>
                 ) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-400" role="status">Đang xác định nghiệp vụ và dựng context được cấp quyền…</p>
+                  <p className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400" role="status"><LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> Đang xác định nghiệp vụ và dựng context được cấp quyền…</p>
                 )}
               </div>
             </article>
@@ -375,11 +382,11 @@ export function AssistantPage() {
           <div ref={conversationEndRef} />
           </div>
 
-          <form className="border-t border-slate-200 p-4 dark:border-slate-800 sm:p-5" onSubmit={handleSubmit}>
+          <form className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5" onSubmit={handleSubmit}>
           <label className="sr-only" htmlFor="assistant-input">Câu hỏi</label>
           <textarea
             id="assistant-input"
-            className="min-h-24 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-3 text-base text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            className="min-h-24 w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 shadow-sm outline-none transition-colors duration-200 focus:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             disabled={chatMutation.isPending || actionMutation.isPending}
             maxLength={32768}
             placeholder="Nhập câu hỏi… (Enter để gửi, Shift + Enter để xuống dòng)"

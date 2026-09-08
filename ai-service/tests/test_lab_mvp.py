@@ -304,7 +304,11 @@ def test_lab_shift_create_returns_validated_non_executable_draft() -> None:
 
 def test_unified_dialogue_uses_semantic_extraction_instead_of_regex_shortcut() -> None:
     from test_shift_interpretation import patch
-    extracted = patch(mode="NEW", date="2026-09-14", startTime="09:00:00", endTime=None)
+    extracted = patch(
+        mode="NEW",
+        dateMention={"day": 14, "month": 9, "year": 2026},
+        timeMentions=[{"role": "START", "hour": 9, "minute": 0}],
+    )
     backend = StubGenerationBackend(json.dumps(extracted))
     request = _request("lab.shift.create.draft", "LABORATORY", 10)
     request["input"] = json.dumps({"dialogueVersion": 1,

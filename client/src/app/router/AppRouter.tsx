@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import {
@@ -14,7 +15,7 @@ import {
   ResetPasswordPage,
   VerifyRegisterPage,
 } from '../../modules/auth/pages';
-import { CheckInPage, LabSlotsPage, MyBookingsPage, SlotDetailPage } from '../../modules/booking/pages';
+import { LabSlotsPage, MyBookingsPage, SlotDetailPage } from '../../modules/booking/pages';
 import {
   ApplicationListPage,
   CleaningPage,
@@ -24,18 +25,31 @@ import {
 } from '../../modules/lab/pages';
 import { ManagerComplaintsPage, PenaltyPage } from '../../modules/penalty/pages';
 import { NotificationsPage } from '../../modules/notification/pages';
-import { AssistantPage } from '../../modules/assistant/pages';
 import { FaceProfilePage } from '../../modules/face/pages';
 import { KnowledgePage } from '../../modules/knowledge/pages';
 import { OperationalLogsPage } from '../../modules/operations/pages';
-import { ResearchPage, ResearchProjectDetailPage, ResearchGroupDetailPage } from '../../modules/research/pages';
 import { OtherPage, ProfilePage, StudentDashboardPage } from '../../modules/user/pages';
 import { AdminLayout, AuthLayout, MainLayout } from '../../layouts';
 import { getStoredRole } from '../../shared/api';
-import { ForbiddenPage, NotFoundPage } from '../../shared/components';
+import { ForbiddenPage, LoadingState, NotFoundPage } from '../../shared/components';
 import { ADMIN, LAB_MANAGER, STUDENT } from '../../shared/constants/roles';
 import { ActiveMembershipRoute } from './ActiveMembershipRoute';
 import { ProtectedRoute } from './ProtectedRoute';
+
+const AssistantPage = lazy(() => import('../../modules/assistant/pages/AssistantPage')
+  .then((module) => ({ default: module.AssistantPage })));
+const CheckInPage = lazy(() => import('../../modules/booking/pages/CheckInPage')
+  .then((module) => ({ default: module.CheckInPage })));
+const ResearchPage = lazy(() => import('../../modules/research/pages/ResearchPage')
+  .then((module) => ({ default: module.ResearchPage })));
+const ResearchProjectDetailPage = lazy(() => import('../../modules/research/pages/ResearchProjectDetailPage')
+  .then((module) => ({ default: module.ResearchProjectDetailPage })));
+const ResearchGroupDetailPage = lazy(() => import('../../modules/research/pages/ResearchGroupDetailPage')
+  .then((module) => ({ default: module.ResearchGroupDetailPage })));
+
+function DeferredPage({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<LoadingState className="m-4">Đang mở màn hình…</LoadingState>}>{children}</Suspense>;
+}
 
 export function AppRouter() {
   return (
@@ -61,7 +75,7 @@ export function AppRouter() {
           <Route path="settings" element={<Navigate to="/admin/system-config" replace />} />
           <Route path="audit-logs" element={<AdminAuditLogPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="assistant" element={<AssistantPage />} />
+          <Route path="assistant" element={<DeferredPage><AssistantPage /></DeferredPage>} />
           <Route path="face-profile" element={<FaceProfilePage />} />
           <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="operational-logs" element={<OperationalLogsPage />} />
@@ -73,7 +87,7 @@ export function AppRouter() {
           <Route index element={<AppIndexRedirect />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="assistant" element={<AssistantPage />} />
+          <Route path="assistant" element={<DeferredPage><AssistantPage /></DeferredPage>} />
           <Route path="face-profile" element={<FaceProfilePage />} />
         </Route>
       </Route>
@@ -93,9 +107,9 @@ export function AppRouter() {
       <Route element={<ProtectedRoute allowedRoles={[STUDENT, LAB_MANAGER]} />}>
         <Route path="/app" element={<MainLayout />}>
           <Route element={<ActiveMembershipRoute allowLabManager />}>
-            <Route path="research" element={<ResearchPage />} />
-            <Route path="research/projects/:projectId" element={<ResearchProjectDetailPage />} />
-            <Route path="research/projects/:projectId/groups/:groupId" element={<ResearchGroupDetailPage />} />
+            <Route path="research" element={<DeferredPage><ResearchPage /></DeferredPage>} />
+            <Route path="research/projects/:projectId" element={<DeferredPage><ResearchProjectDetailPage /></DeferredPage>} />
+            <Route path="research/projects/:projectId/groups/:groupId" element={<DeferredPage><ResearchGroupDetailPage /></DeferredPage>} />
           </Route>
         </Route>
       </Route>
@@ -109,7 +123,7 @@ export function AppRouter() {
           <Route path="lab-slots/:slotId" element={<SlotDetailPage />} />
           <Route path="lab-bookings" element={<Navigate to="/app/lab-slots" replace />} />
           <Route path="lab-bokings" element={<Navigate to="/app/lab-slots" replace />} />
-          <Route path="checkin-scan" element={<CheckInPage />} />
+          <Route path="checkin-scan" element={<DeferredPage><CheckInPage /></DeferredPage>} />
           <Route path="lab-members" element={<LabMembersPage />} />
           <Route path="cleaning" element={<CleaningPage />} />
           <Route path="complaints" element={<ManagerComplaintsPage />} />

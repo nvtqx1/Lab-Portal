@@ -37,6 +37,12 @@ export function AdminLayout() {
 
   return (
     <div className="dark min-h-screen overflow-x-hidden bg-slate-950 text-slate-100">
+      <a
+        className="fixed left-4 top-3 z-toast -translate-y-20 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg transition-transform focus:translate-y-0"
+        href="#admin-main-content"
+      >
+        Bỏ qua menu
+      </a>
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-y-auto border-r border-slate-800 bg-slate-950 px-4 py-6 lg:block">
         <SidebarContent navItems={adminNavItems} onNavigate={() => setIsMobileNavOpen(false)} />
       </aside>
@@ -107,7 +113,7 @@ export function AdminLayout() {
           </div>
         </header>
 
-        <main className="min-w-0 max-w-full px-4 py-6 lg:px-8">
+        <main className="min-w-0 max-w-full px-4 py-6 lg:px-8" id="admin-main-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -140,7 +146,7 @@ function SidebarContent({ navItems, compact = false, onNavigate }: SidebarConten
             to={item.path}
             className={({ isActive }) =>
               [
-                'block rounded-md px-3 py-2 text-sm font-medium transition',
+                  'flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
                 isActive
                   ? 'bg-white text-slate-950'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white',

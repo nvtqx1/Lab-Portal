@@ -7,6 +7,11 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
       },
+      zIndex: {
+        navigation: '40',
+        modal: '50',
+        toast: '60',
+      },
     },
   },
   plugins: [],
