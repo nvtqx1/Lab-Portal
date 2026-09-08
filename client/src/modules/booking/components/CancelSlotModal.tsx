@@ -19,14 +19,6 @@ export function CancelSlotModal({ labId, slotId, isOpen, onClose }: CancelSlotMo
   }
 
   const handleSubmit = async () => {
-    if (
-      !window.confirm(
-        'Bạn có chắc muốn hủy khung giờ sử dụng này không? Các sinh viên đã đăng ký sẽ được thông báo qua email.',
-      )
-    ) {
-      return;
-    }
-
     await cancelSlot.mutateAsync({
       slotId,
       reason,

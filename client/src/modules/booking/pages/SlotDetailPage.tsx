@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { LoadingState } from '../../../shared/components';
+import { ConfirmDialog, LoadingState } from '../../../shared/components';
 import { getManagedLabId } from '../../../shared/utils/membership';
 import { useCreatePenalty, useSlotPenalties } from '../../penalty/hooks';
 import { formatPenaltyType } from '../../penalty/utils';
@@ -37,6 +37,11 @@ export function SlotDetailPage() {
   const numericSlotId = Number(slotId);
   const [cancelSlotId, setCancelSlotId] = useState<number | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<BookingResponse | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<
+    | { type: 'REVIEW'; bookingId: number; decision: 'APPROVE' | 'REJECT' }
+    | { type: 'COMPLETE' }
+    | null
+  >(null);
   const { data: currentUser } = useCurrentUser();
   const managedLabId = getManagedLabId(currentUser);
   const { data: slot, isLoading: isLoadingSlot } = useSlot(numericSlotId);
@@ -73,12 +78,17 @@ export function SlotDetailPage() {
   }, [slotPenalties]);
 
   const handleReview = (bookingId: number, decision: 'APPROVE' | 'REJECT') => {
-    const message =
-      decision === 'APPROVE'
-        ? 'Phê duyệt đăng ký sử dụng PTN này?'
-        : 'Từ chối đăng ký sử dụng PTN này?';
-    if (window.confirm(message)) {
-      reviewBooking.mutate({ bookingId, decision });
+    setPendingConfirmation({ type: 'REVIEW', bookingId, decision });
+  };
+
+  const confirmPendingAction = () => {
+    if (pendingConfirmation?.type === 'REVIEW') {
+      reviewBooking.mutate(
+        { bookingId: pendingConfirmation.bookingId, decision: pendingConfirmation.decision },
+        { onSuccess: () => setPendingConfirmation(null) },
+      );
+    } else if (pendingConfirmation?.type === 'COMPLETE' && slot) {
+      completeSlot.mutate(slot.id, { onSuccess: () => setPendingConfirmation(null) });
     }
   };
 
@@ -121,11 +131,7 @@ export function SlotDetailPage() {
               type="button"
               className="w-fit rounded-md bg-red-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
               disabled={completeSlot.isPending}
-              onClick={() => {
-                if (window.confirm('Bạn có chắc muốn kết thúc ca sử dụng lab ngay bây giờ không?')) {
-                  completeSlot.mutate(slot.id);
-                }
-              }}
+              onClick={() => setPendingConfirmation({ type: 'COMPLETE' })}
             >
               {completeSlot.isPending ? 'Đang kết thúc...' : 'Kết thúc ca lab'}
             </button>
@@ -282,6 +288,26 @@ export function SlotDetailPage() {
         isSubmitting={createPenalty.isPending}
         onClose={() => setSelectedBooking(null)}
         onSubmit={handleCreatePenalty}
+      />
+      <ConfirmDialog
+        confirmLabel={pendingConfirmation?.type === 'COMPLETE'
+          ? 'Kết thúc ca'
+          : pendingConfirmation?.decision === 'APPROVE' ? 'Phê duyệt' : 'Từ chối'}
+        isOpen={pendingConfirmation !== null}
+        isPending={reviewBooking.isPending || completeSlot.isPending}
+        message={pendingConfirmation?.type === 'COMPLETE'
+          ? 'Bạn có chắc muốn kết thúc ca sử dụng Lab ngay bây giờ không?'
+          : pendingConfirmation?.decision === 'APPROVE'
+            ? 'Phê duyệt đăng ký sử dụng PTN này?'
+            : 'Từ chối đăng ký sử dụng PTN này?'}
+        onCancel={() => setPendingConfirmation(null)}
+        onConfirm={confirmPendingAction}
+        title={pendingConfirmation?.type === 'COMPLETE'
+          ? 'Kết thúc ca sử dụng?'
+          : pendingConfirmation?.decision === 'APPROVE' ? 'Phê duyệt đăng ký?' : 'Từ chối đăng ký?'}
+        variant={pendingConfirmation?.type === 'REVIEW' && pendingConfirmation.decision === 'APPROVE'
+          ? 'success'
+          : 'danger'}
       />
     </section>
   );

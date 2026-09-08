@@ -1,7 +1,7 @@
 import { CalendarClock, History, QrCode } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { EmptyState, ErrorState, LoadingState } from '../../../shared/components';
+import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '../../../shared/components';
 import { CheckinButton, CheckinQrModal } from '../components';
 import type { CheckinQrHistoryResponse } from '../api';
 import { useCancelBooking, useMyBookings, useMyCheckinQrHistory } from '../hooks';
@@ -41,6 +41,7 @@ export function MyBookingsPage() {
   const cancelBooking = useCancelBooking();
   const [view, setView] = useState<BookingView>('UPCOMING');
   const [selectedQr, setSelectedQr] = useState<CheckinQrHistoryResponse | null>(null);
+  const [bookingPendingCancel, setBookingPendingCancel] = useState<number | null>(null);
   const { upcomingBookings, bookingHistory } = useMemo(() => {
     const now = Date.now();
     const upcoming = bookings
@@ -154,11 +155,7 @@ export function MyBookingsPage() {
                       className="min-h-11 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
                       disabled={cancelBooking.isPending}
                       type="button"
-                      onClick={() => {
-                        if (window.confirm('Bạn có chắc muốn hủy đăng ký sử dụng khung giờ này không?')) {
-                          cancelBooking.mutate(booking.id);
-                        }
-                      }}
+                      onClick={() => setBookingPendingCancel(booking.id)}
                     >
                       Hủy đăng ký
                     </button>
@@ -181,6 +178,18 @@ export function MyBookingsPage() {
           />
         ) : null;
       })() : null}
+      <ConfirmDialog
+        confirmLabel="Hủy đăng ký"
+        isOpen={bookingPendingCancel !== null}
+        isPending={cancelBooking.isPending}
+        message="Bạn có chắc muốn hủy đăng ký sử dụng khung giờ này không?"
+        onCancel={() => setBookingPendingCancel(null)}
+        onConfirm={() => {
+          if (bookingPendingCancel === null) return;
+          cancelBooking.mutate(bookingPendingCancel, { onSuccess: () => setBookingPendingCancel(null) });
+        }}
+        title="Hủy đăng ký sử dụng?"
+      />
     </section>
   );
 }

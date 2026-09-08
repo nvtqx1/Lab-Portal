@@ -3,7 +3,7 @@ import { Camera, CircleCheck, Shield, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { getStoredRole } from '../../../shared/api';
-import { Button, EmptyState, ErrorState, Modal } from '../../../shared/components';
+import { Button, ConfirmDialog, EmptyState, ErrorState, Modal } from '../../../shared/components';
 import type { Response } from '../../../shared/types';
 import { useProfile } from '../../user/hooks';
 import { getFaceGuidance, readFaceImage, startFaceChallenge } from '../api';
@@ -82,6 +82,7 @@ export function FaceProfilePage() {
     (membership) => membership.status?.toUpperCase() === 'ACTIVE',
   ) ?? false;
   const [targetInput, setTargetInput] = useState('');
+  const [pendingConfirmation, setPendingConfirmation] = useState<'WITHDRAW_CONSENT' | 'REMOVE_PROFILE' | null>(null);
   const targetUserId = isAdmin && Number(targetInput) > 0 ? Number(targetInput) : null;
   const enabled = isAdmin ? targetUserId !== null : hasActiveLabMembership;
   const adminProfiles = useFaceProfiles(isAdmin);
@@ -234,7 +235,6 @@ export function FaceProfilePage() {
   };
 
   const withdrawConsent = () => {
-    if (!window.confirm('Rút đồng ý sẽ vô hiệu hóa việc sử dụng hồ sơ khuôn mặt để nhận diện. Bạn có muốn tiếp tục?')) return;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraActive(false);
@@ -243,7 +243,18 @@ export function FaceProfilePage() {
     setImage(null);
     setPreviewUrl('');
     setPrivacyAccepted(false);
-    actions.consent.mutate({ status: 'WITHDRAWN' });
+    actions.consent.mutate(
+      { status: 'WITHDRAWN' },
+      { onSuccess: () => setPendingConfirmation(null) },
+    );
+  };
+
+  const confirmFaceAction = () => {
+    if (pendingConfirmation === 'WITHDRAW_CONSENT') {
+      withdrawConsent();
+    } else if (pendingConfirmation === 'REMOVE_PROFILE') {
+      actions.remove.mutate(undefined, { onSuccess: () => setPendingConfirmation(null) });
+    }
   };
 
   const captureCamera = () => {
@@ -420,8 +431,8 @@ export function FaceProfilePage() {
                 <Button type="button" variant={consent.data?.status === 'GRANTED' ? 'outline' : 'success'} disabled={consent.isLoading || consent.isError || (consent.data?.status !== 'GRANTED' && !privacyAccepted)} loading={actions.consent.isPending} loadingText="Đang ghi nhận đồng ý..." onClick={requestConsentAndOpenCamera}><Camera aria-hidden="true" className="h-4 w-4" /> {consent.data?.status === 'GRANTED' ? 'Mở camera' : 'Tôi đồng ý và mở camera'}</Button>
                 <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Ảnh được chụp trực tiếp để kiểm tra chất lượng và liveness; hệ thống chỉ lưu embedding đã mã hóa.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {profile.data ? <Button aria-label="Xóa hồ sơ khuôn mặt" loading={actions.remove.isPending} variant="danger" onClick={() => { if (window.confirm('Xóa hồ sơ khuôn mặt hiện tại?')) actions.remove.mutate(); }}><Trash2 aria-hidden="true" className="h-4 w-4" /> Xóa hồ sơ</Button> : null}
-                  {consent.data?.status === 'GRANTED' ? <Button type="button" loading={actions.consent.isPending} variant="outline" onClick={withdrawConsent}>Rút lại đồng ý</Button> : null}
+                  {profile.data ? <Button aria-label="Xóa hồ sơ khuôn mặt" loading={actions.remove.isPending} variant="danger" onClick={() => setPendingConfirmation('REMOVE_PROFILE')}><Trash2 aria-hidden="true" className="h-4 w-4" /> Xóa hồ sơ</Button> : null}
+                  {consent.data?.status === 'GRANTED' ? <Button type="button" loading={actions.consent.isPending} variant="outline" onClick={() => setPendingConfirmation('WITHDRAW_CONSENT')}>Rút lại đồng ý</Button> : null}
                 </div>
               </div>
             )}
@@ -470,6 +481,18 @@ export function FaceProfilePage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        confirmLabel={pendingConfirmation === 'REMOVE_PROFILE' ? 'Xóa hồ sơ' : 'Rút đồng ý'}
+        isOpen={pendingConfirmation !== null}
+        isPending={actions.remove.isPending || actions.consent.isPending}
+        message={pendingConfirmation === 'REMOVE_PROFILE'
+          ? 'Hồ sơ khuôn mặt hiện tại sẽ bị xóa.'
+          : 'Rút đồng ý sẽ vô hiệu hóa việc sử dụng hồ sơ khuôn mặt để nhận diện.'}
+        onCancel={() => setPendingConfirmation(null)}
+        onConfirm={confirmFaceAction}
+        title={pendingConfirmation === 'REMOVE_PROFILE' ? 'Xóa hồ sơ khuôn mặt?' : 'Rút lại đồng ý?'}
+      />
 
       {!cameraDialogOpen && (localError || mutationError) ? <p className="mt-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" role="alert">{localError || errorMessage(mutationError)}</p> : null}
     </section>

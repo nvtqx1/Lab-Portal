@@ -1,4 +1,5 @@
 export * from './Button';
+export * from './ConfirmDialog';
 export * from './DataState';
 export * from './ErrorBoundary';
 export * from './Forbidden';
