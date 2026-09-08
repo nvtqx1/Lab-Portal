@@ -1,6 +1,7 @@
 package com.web.labportalbackend.ai.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 @ExtendWith(MockitoExtension.class)
 class AiConversationHistoryServiceImplTest {
@@ -48,6 +50,22 @@ class AiConversationHistoryServiceImplTest {
         service = new AiConversationHistoryServiceImpl(
                 conversationRepository, messageRepository, actorProvider, objectMapper, suggestions,
                 Clock.fixed(Instant.parse("2026-09-23T03:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @Test
+    void springContextSelectsProductionConstructor() {
+        try (var context = new AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().registerSingleton("conversationRepository", conversationRepository);
+            context.getBeanFactory().registerSingleton("messageRepository", messageRepository);
+            context.getBeanFactory().registerSingleton("actorProvider", actorProvider);
+            context.getBeanFactory().registerSingleton("objectMapper", objectMapper);
+            context.getBeanFactory().registerSingleton("suggestions", suggestions);
+            context.registerBean(AiConversationHistoryServiceImpl.class);
+
+            context.refresh();
+
+            assertNotNull(context.getBean(AiConversationHistoryServiceImpl.class));
+        }
     }
 
     @Test
