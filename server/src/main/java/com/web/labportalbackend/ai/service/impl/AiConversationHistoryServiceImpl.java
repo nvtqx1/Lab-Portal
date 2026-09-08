@@ -31,6 +31,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +51,7 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
     private final Clock clock;
     private static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
+    @Autowired
     public AiConversationHistoryServiceImpl(AiConversationRepository conversationRepository,
                                             AiMessageRepository messageRepository,
                                             AiCurrentActorProvider currentActorProvider,
