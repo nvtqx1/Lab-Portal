@@ -180,7 +180,7 @@ class AiUnifiedChatServiceImplTest {
         when(assistantGatewayService.chat(eq(AiAssistantKey.LAB_ASSISTANT), any(), eq("request-4")))
                 .thenReturn(generated);
         when(actionSuggestionService.createLabShiftPreview(10L, generated)).thenReturn(
-                new AiActionPreviewResponse(41L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L,
+                new AiActionPreviewResponse(41L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L, "AI Research Lab",
                         Instant.parse("2026-09-10T01:00:00Z"), Instant.parse("2026-09-10T03:00:00Z"), 20));
 
         var response = service.chat(request("Tạo ca ngày 10 tháng 9 từ 8 đến 10 giờ, 20 chỗ"), "request-4");
@@ -309,9 +309,9 @@ class AiUnifiedChatServiceImplTest {
                 interpreted("CONTINUE", null, null, "11:00:00"),
                 interpreted("CONTINUE", null, null, "12:00:00"));
         when(actionSuggestionService.createLabShiftPreview(eq(10L), any())).thenReturn(
-                new AiActionPreviewResponse(55L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L,
+                new AiActionPreviewResponse(55L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L, "AI Research Lab",
                         Instant.parse("2026-09-14T02:00:00Z"), Instant.parse("2026-09-14T04:00:00Z"), 30),
-                new AiActionPreviewResponse(56L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L,
+                new AiActionPreviewResponse(56L, "CREATE_LAB_SHIFT", "AWAITING_CONFIRMATION", 10L, "AI Research Lab",
                         Instant.parse("2026-09-14T02:00:00Z"), Instant.parse("2026-09-14T05:00:00Z"), 30));
         assertEquals(AiUnifiedChatResponseType.CLARIFICATION_REQUIRED, service.chat(request("Tạo ca 14/9 từ 9h"), "a").type());
         assertEquals(AiUnifiedChatResponseType.ACTION_PREVIEW, service.chat(request("11h nhé"), "b").type());

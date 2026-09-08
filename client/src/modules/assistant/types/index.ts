@@ -94,6 +94,7 @@ export interface AssistantActionPreview {
   actionType: 'CREATE_LAB_SHIFT';
   status: 'AWAITING_CONFIRMATION';
   labId: number;
+  labName: string | null;
   startTime: string;
   endTime: string;
   capacity: number;

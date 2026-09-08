@@ -12,6 +12,8 @@ public record AiActionPreviewResponse(
         String status,
         @Schema(description = "Managed laboratory that will receive the new time slot")
         Long labId,
+        @Schema(description = "Current server-owned name of the managed laboratory that will receive the new time slot")
+        String labName,
         @Schema(description = "UTC start instant of the proposed time slot")
         Instant startTime,
         @Schema(description = "UTC end instant of the proposed time slot")

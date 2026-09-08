@@ -25,6 +25,9 @@ import com.web.labportalbackend.ai.service.AiCurrentActor;
 import com.web.labportalbackend.ai.service.AiCurrentActorProvider;
 import jakarta.persistence.EntityNotFoundException;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -44,17 +47,30 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
     private final AiCurrentActorProvider currentActorProvider;
     private final ObjectMapper objectMapper;
     private final AiActionSuggestionRepository suggestions;
+    private final Clock clock;
+    private static final ZoneId DEFAULT_TIME_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     public AiConversationHistoryServiceImpl(AiConversationRepository conversationRepository,
                                             AiMessageRepository messageRepository,
                                             AiCurrentActorProvider currentActorProvider,
                                             ObjectMapper objectMapper,
                                             AiActionSuggestionRepository suggestions) {
+        this(conversationRepository, messageRepository, currentActorProvider, objectMapper, suggestions,
+                Clock.systemUTC());
+    }
+
+    AiConversationHistoryServiceImpl(AiConversationRepository conversationRepository,
+                                     AiMessageRepository messageRepository,
+                                     AiCurrentActorProvider currentActorProvider,
+                                     ObjectMapper objectMapper,
+                                     AiActionSuggestionRepository suggestions,
+                                     Clock clock) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.currentActorProvider = currentActorProvider;
         this.objectMapper = objectMapper;
         this.suggestions = suggestions;
+        this.clock = clock;
     }
 
     @Override
@@ -76,6 +92,9 @@ public class AiConversationHistoryServiceImpl implements AiConversationHistorySe
         envelope.put("dialogueVersion", 1);
         envelope.put("message", input);
         envelope.set("pendingState", objectMapper.valueToTree(state));
+        var temporalContext = envelope.putObject("temporalContext");
+        temporalContext.put("currentDate", LocalDate.now(clock.withZone(DEFAULT_TIME_ZONE)).toString());
+        temporalContext.put("defaultTimeZone", DEFAULT_TIME_ZONE.getId());
         var history = envelope.putArray("history");
         // Include question + answer pairs in chronological order, with a bounded input budget.
         for (int index = recent.size() - 1; index >= 0; index--) {
