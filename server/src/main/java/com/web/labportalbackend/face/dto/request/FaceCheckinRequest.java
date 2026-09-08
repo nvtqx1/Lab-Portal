@@ -12,7 +12,7 @@ import java.util.List;
 public record FaceCheckinRequest(
         @NotNull
         @Positive
-        @Schema(description = "Approved booking in the laboratory managed by the authenticated manager") Long bookingId,
+        @Schema(description = "Laboratory time slot selected by the authenticated manager") Long slotId,
         @NotBlank
         @Size(max = 14_000_000)
         @Schema(description = "Base64-encoded JPEG or PNG live face image") String imageBase64,

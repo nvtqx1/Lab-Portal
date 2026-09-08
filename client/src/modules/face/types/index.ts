@@ -45,7 +45,9 @@ export interface FaceGuidanceResult {
 }
 
 export interface FaceCheckinResult {
-  bookingId: number;
+  bookingId: number | null;
+  userId: number | null;
+  studentName: string | null;
   checkedIn: boolean;
   result: string;
   confidenceScore: number | null;

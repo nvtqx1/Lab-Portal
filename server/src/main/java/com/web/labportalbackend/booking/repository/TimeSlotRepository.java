@@ -68,6 +68,16 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
             @Param("hiddenStatuses") List<TimeSlotStatus> hiddenStatuses
     );
 
+    @Query("SELECT ts FROM TimeSlot ts WHERE ts.lab.id = :labId " +
+           "AND (ts.endTime < :now OR ts.status IN :terminalStatuses) " +
+           "AND ts.deleted = false AND ts.active = true " +
+           "ORDER BY ts.startTime DESC, ts.id DESC")
+    List<TimeSlot> findHistoryByLabId(
+            @Param("labId") Long labId,
+            @Param("now") Instant now,
+            @Param("terminalStatuses") List<TimeSlotStatus> terminalStatuses
+    );
+
     /**
      * Find all active time slots for a lab with a specific status.
      *
@@ -89,11 +99,13 @@ public interface TimeSlotRepository extends JpaRepository<TimeSlot, Long> {
      */
     @Query("SELECT ts FROM TimeSlot ts WHERE ts.lab.id = :labId " +
            "AND ts.startTime < :endTime AND ts.endTime > :startTime " +
+           "AND ts.status NOT IN :ignoredStatuses " +
            "AND ts.deleted = false AND ts.active = true")
     List<TimeSlot> findOverlappingSlots(
             @Param("labId") Long labId,
             @Param("startTime") Instant startTime,
-            @Param("endTime") Instant endTime
+            @Param("endTime") Instant endTime,
+            @Param("ignoredStatuses") List<TimeSlotStatus> ignoredStatuses
     );
 
     /**

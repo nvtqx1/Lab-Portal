@@ -222,8 +222,11 @@ public class AiRagIngestionServiceImpl implements AiRagIngestionService {
     }
 
     private static boolean matchesGroupScope(GroupEntity group, Long labId, ProjectEntity project) {
-        if (group.getLab() == null || !labId.equals(group.getLab().getId()) || project == null) {
+        if (group.getLab() == null || !labId.equals(group.getLab().getId())) {
             return false;
+        }
+        if (project == null) {
+            return true;
         }
         return (group.getProject() != null && project.getId().equals(group.getProject().getId()))
                 || (project.getGroup() != null && group.getId().equals(project.getGroup().getId()));

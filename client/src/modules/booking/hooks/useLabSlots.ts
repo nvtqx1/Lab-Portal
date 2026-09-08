@@ -7,6 +7,7 @@ import {
   cancelSlot,
   completeSlot,
   createSlot,
+  getLabSlotHistory,
   getLabSlots,
   getSlot,
   type CancelSlotPayload,
@@ -14,12 +15,17 @@ import {
 } from '../api';
 import { isUsableSlot, normalizeSlot } from '../utils';
 
-export function useLabSlots(labId?: number | null) {
+export function useLabSlots(labId?: number | null, view: 'active' | 'history' = 'active') {
   return useQuery({
-    queryKey: queryKeys.slots.byLab(labId as number),
+    queryKey: view === 'history'
+      ? queryKeys.slots.history(labId as number)
+      : queryKeys.slots.byLab(labId as number),
     queryFn: async () => {
-      const slots = await getLabSlots(labId as number);
-      return slots.map(normalizeSlot).filter(isUsableSlot);
+      const slots = view === 'history'
+        ? await getLabSlotHistory(labId as number)
+        : await getLabSlots(labId as number);
+      const normalized = slots.map(normalizeSlot);
+      return view === 'history' ? normalized : normalized.filter(isUsableSlot);
     },
     enabled: Boolean(labId),
     refetchOnWindowFocus: true,
@@ -60,7 +66,11 @@ export function useCompleteSlot(labId?: number | null, slotId?: number | null) {
 function getErrorMessage(error: unknown, fallback = 'Không thể tạo khung giờ sử dụng.') {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as { message?: string; errors?: string[] } | undefined;
-    return data?.message ?? data?.errors?.[0] ?? fallback;
+    const message = data?.message ?? data?.errors?.[0];
+    if (message === 'Time slot overlaps with an existing slot in this lab') {
+      return 'Khung giờ này bị trùng với một ca sử dụng đang hoạt động. Vui lòng chọn thời gian khác.';
+    }
+    return message ?? fallback;
   }
 
   return fallback;

@@ -37,7 +37,7 @@ class AiRagRetrievalServiceImplTest {
         AiAuthorizedContext context = authorizedContext(10L, 20L, 30L);
         when(repository.findByNamespaceAndActiveTrueAndDeletedFalse(eq("research-knowledge"), any(Pageable.class)))
                 .thenReturn(List.of(
-                        chunk(1L, AiAssistantDomain.RESEARCH, AiRagVisibility.GROUP_MEMBERS, 10L, 20L, 30L,
+                        chunk(1L, AiAssistantDomain.RESEARCH, AiRagVisibility.GROUP_MEMBERS, 10L, null, 30L,
                                 "bounded safety policy"),
                         chunk(2L, AiAssistantDomain.RESEARCH, AiRagVisibility.GROUP_MEMBERS, 10L, 20L, 31L,
                                 "bounded safety policy"),

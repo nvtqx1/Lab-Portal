@@ -80,7 +80,7 @@ export function MyBookingsPage() {
       <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 sm:p-6">
         <h1 className="text-xl font-semibold tracking-tight text-slate-950 dark:text-white">Ca sử dụng của tôi</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Theo dõi trạng thái đăng ký và thời gian sử dụng. Khi đến PTN, quản lý sẽ xác nhận có mặt bằng Face ID hoặc QR trên thiết bị quản lý.
+          Theo dõi trạng thái đăng ký và thời gian sử dụng. Khi đến PTN, quản lý sẽ xác nhận có mặt bằng nhận diện khuôn mặt hoặc QR.
         </p>
         <div className="mt-5 flex gap-2 border-b border-slate-200 dark:border-slate-800" role="tablist" aria-label="Phân loại ca sử dụng">
           <BookingTab active={view === 'UPCOMING'} count={upcomingBookings.length} icon={CalendarClock} label="Sắp tới" onClick={() => setView('UPCOMING')} />

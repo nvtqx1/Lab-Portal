@@ -88,7 +88,9 @@ public class AiToolCandidateCatalogServiceImpl implements AiToolCandidateCatalog
                         "Create a confirmation preview for a new time slot in managed Lab " + labLabel,
                         lab.getId()),
                 candidate(AiCapability.LAB_POLICY_READ,
-                        "Explain booking and check-in policy for Lab " + labLabel, lab.getId()));
+                        "Answer informational questions from authorized knowledge documents for managed Lab "
+                                + labLabel + ", including policies, procedures, equipment, materials, safety, and guidance",
+                        lab.getId()));
     }
 
     private List<AiToolCandidate> studentCandidates(Long actorId) {
@@ -100,7 +102,9 @@ public class AiToolCandidateCatalogServiceImpl implements AiToolCandidateCatalog
             result.add(candidate(AiCapability.LAB_AVAILABLE_SLOTS_READ,
                     "List future available time slots for joined Lab " + labLabel, lab.id()));
             result.add(candidate(AiCapability.LAB_POLICY_READ,
-                    "Explain booking and check-in policy for joined Lab " + labLabel, lab.id()));
+                    "Answer informational questions from authorized knowledge documents for joined Lab "
+                            + labLabel + ", including policies, procedures, equipment, materials, safety, and guidance",
+                    lab.id()));
         }
         bookingRepository.findAiCandidateOwnBookings(actorId, PageRequest.of(0, BOOKING_LIMIT))
                 .forEach(booking -> result.add(candidate(AiCapability.LAB_OWN_BOOKING_READ,

@@ -60,7 +60,7 @@ public class AiRagDocumentIngestRequest {
     private Long labId;
 
     @Positive(message = "Project ID must be positive")
-    @Schema(description = "Research project scope for project- or group-visible knowledge")
+    @Schema(description = "Research project scope for project-visible knowledge; optional for legacy group-scoped documents")
     private Long projectId;
 
     @Positive(message = "Group ID must be positive")
@@ -107,7 +107,7 @@ public class AiRagDocumentIngestRequest {
             case PROJECT_MEMBERS -> domain == AiAssistantDomain.RESEARCH
                     && projectId != null && groupId == null;
             case GROUP_MEMBERS -> domain == AiAssistantDomain.RESEARCH
-                    && projectId != null && groupId != null;
+                    && groupId != null;
             case OWNER -> groupId == null || projectId != null;
         };
     }

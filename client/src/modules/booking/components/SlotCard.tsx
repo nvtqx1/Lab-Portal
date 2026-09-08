@@ -12,6 +12,7 @@ interface SlotCardProps {
   onCancelBooking?: (booking: BookingResponse) => void;
   onViewDetail?: (slot: LabSlot) => void;
   onCancelSlot?: (slot: LabSlot) => void;
+  historical?: boolean;
 }
 
 const badgeStyles: Record<string, string> = {
@@ -68,6 +69,7 @@ export function SlotCard({
   onCancelBooking,
   onViewDetail,
   onCancelSlot,
+  historical = false,
 }: SlotCardProps) {
   const badgeClass = badgeStyles[slot.status] ?? 'bg-slate-100 text-slate-700 ring-slate-200';
   const canRegister =
@@ -81,6 +83,7 @@ export function SlotCard({
     isCancellableBooking(userBooking.status, slot.startTime);
   const canCancelSlot =
     mode === 'manager' &&
+    !historical &&
     slot.status !== 'CANCELLED' &&
     !isPastSlot(slot);
 

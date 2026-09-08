@@ -16,6 +16,7 @@ export const queryKeys = {
   },
   slots: {
     byLab: (labId: number) => ['labSlots', labId] as const,
+    history: (labId: number) => ['labSlots', labId, 'history'] as const,
     detail: (slotId: number) => ['slotDetail', slotId] as const,
     bookings: (slotId: number) => ['slotBookings', slotId] as const,
   },

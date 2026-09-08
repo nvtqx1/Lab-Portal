@@ -34,6 +34,12 @@ function toApiDateTime(date: string, time: string) {
   return new Date(toLocalDateTime(date, time)).toISOString();
 }
 
+function todayInputValue() {
+  const now = new Date();
+  const localToday = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return localToday.toISOString().slice(0, 10);
+}
+
 const HOURS_24 = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0'));
 
@@ -150,13 +156,15 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
       setError('');
       onClose();
     } catch {
-      setError('Không thể tạo khung giờ sử dụng. Vui lòng kiểm tra lại thông tin.');
+      // The mutation displays the server error through the shared toast.
     }
   };
 
   return (
     <form onSubmit={handleSubmit}>
       <Modal
+        backdropBlur
+        centered
         footer={(
           <>
             <Button disabled={isSubmitting} onClick={handleClose} variant="outline">
@@ -168,6 +176,7 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
           </>
         )}
         onClose={handleClose}
+        size="lg"
         subtitle="Khung giờ sẽ được tạo cho PTN bạn đang quản lý."
         title="Tạo khung giờ sử dụng"
       >
@@ -179,10 +188,13 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
             <input
               id="slot-date"
               type="date"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+              lang="vi-VN"
+              min={todayInputValue()}
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
               value={form.date}
               onChange={(event) => updateField('date', event.target.value)}
             />
+            <p className="mt-1 text-xs text-slate-500">Chọn theo định dạng ngày/tháng/năm.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -199,7 +211,7 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
                 id="slot-capacity"
                 type="number"
                 min="1"
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                 value={form.capacity}
                 onChange={(event) => updateField('capacity', event.target.value)}
               />
@@ -210,7 +222,7 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
               </label>
               <select
                 id="slot-status"
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-base outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                 value={form.status}
                 onChange={(event) => updateField('status', event.target.value)}
               >
@@ -222,7 +234,7 @@ export function CreateSlotModal({ labId, isOpen, onClose }: CreateSlotModalProps
           </div>
 
           {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
               {error}
             </div>
           ) : null}

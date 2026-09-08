@@ -68,9 +68,9 @@ export async function startFaceChallenge(userId: number | null): Promise<FaceCha
   return response.data.data;
 }
 
-export async function faceCheckin(bookingId: number, request: Omit<FaceImageRequest, 'livenessRequired'>) {
+export async function faceCheckin(slotId: number, request: Omit<FaceImageRequest, 'livenessRequired'>) {
   const response = await apiClient.post<Response<FaceCheckinResult>>('/api/face/check-in', {
-    bookingId,
+    slotId,
     ...request,
   });
   return response.data.data;

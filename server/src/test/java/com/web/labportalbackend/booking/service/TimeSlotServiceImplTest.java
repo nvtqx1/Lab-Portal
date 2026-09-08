@@ -192,4 +192,124 @@ class TimeSlotServiceImplTest {
         verify(bookingRepository, never()).countActiveByTimeSlotIdAndStatus(anyLong(), any());
         verify(bookingRepository, never()).countActiveByTimeSlotIdAndStatusIn(anyLong(), anyList());
     }
+
+    @Test
+    void managerCanReviewPastAndTerminalSlotsFromTheManagedLab() {
+        TimeSlotRepository slotRepository = mock(TimeSlotRepository.class);
+        LaboratoryRepository labRepository = mock(LaboratoryRepository.class);
+        MembershipRepository membershipRepository = mock(MembershipRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        BookingRepository bookingRepository = mock(BookingRepository.class);
+        TimeSlotServiceImpl service = new TimeSlotServiceImpl(slotRepository, labRepository,
+                membershipRepository, userRepository, bookingRepository, mock(BookingOutboxService.class),
+                mock(SystemConfigService.class), mock(AuditLogService.class), mock(NotificationEmitter.class));
+
+        User manager = mock(User.class);
+        when(manager.getId()).thenReturn(3L);
+        when(manager.hasRole("LAB_MANAGER")).thenReturn(true);
+        Laboratory lab = new Laboratory();
+        lab.setId(5L);
+        TimeSlot closedSlot = new TimeSlot();
+        closedSlot.setId(9L);
+        closedSlot.setLab(lab);
+        closedSlot.setStatus(TimeSlotStatus.CLOSED);
+        closedSlot.setCapacity(10);
+        closedSlot.setStartTime(Instant.now().minusSeconds(3600));
+        closedSlot.setEndTime(Instant.now().minusSeconds(1800));
+
+        when(userRepository.findByUsername("manager")).thenReturn(Optional.of(manager));
+        when(labRepository.findById(5L)).thenReturn(Optional.of(lab));
+        when(labRepository.findFirstByManagerIdAndDeletedFalse(3L)).thenReturn(Optional.of(lab));
+        when(slotRepository.findHistoryByLabId(eq(5L), any(Instant.class), anyList()))
+                .thenReturn(List.of(closedSlot));
+        when(bookingRepository.findActiveCountsByTimeSlotIds(List.of(9L)))
+                .thenReturn(List.of(new TimeSlotBookingCounts(9L, 6L, 5L, 0L)));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("manager", "n/a", List.of()));
+
+        var result = service.getSlotHistoryByLab(5L);
+
+        assertEquals(1, result.size());
+        assertEquals(TimeSlotStatus.CLOSED, result.getFirst().getStatus());
+        assertEquals(6L, result.getFirst().getApprovedCount());
+        assertEquals(5L, result.getFirst().getCheckedInCount());
+        verify(slotRepository).findHistoryByLabId(eq(5L), any(Instant.class), argThat(statuses ->
+                statuses.contains(TimeSlotStatus.CANCELLED)
+                        && statuses.contains(TimeSlotStatus.CLOSED)
+                        && statuses.contains(TimeSlotStatus.ARCHIVED)));
+    }
+
+    @Test
+    void studentCannotRequestManagerSlotHistory() {
+        TimeSlotRepository slotRepository = mock(TimeSlotRepository.class);
+        LaboratoryRepository labRepository = mock(LaboratoryRepository.class);
+        MembershipRepository membershipRepository = mock(MembershipRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        TimeSlotServiceImpl service = new TimeSlotServiceImpl(slotRepository, labRepository,
+                membershipRepository, userRepository, mock(BookingRepository.class), mock(BookingOutboxService.class),
+                mock(SystemConfigService.class), mock(AuditLogService.class), mock(NotificationEmitter.class));
+
+        User student = mock(User.class);
+        when(student.hasRole("LAB_MANAGER")).thenReturn(false);
+        Laboratory lab = new Laboratory();
+        lab.setId(5L);
+        when(userRepository.findByUsername("student")).thenReturn(Optional.of(student));
+        when(labRepository.findById(5L)).thenReturn(Optional.of(lab));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("student", "n/a", List.of()));
+
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.getSlotHistoryByLab(5L));
+        verify(slotRepository, never()).findHistoryByLabId(anyLong(), any(), anyList());
+    }
+
+    @Test
+    void terminalSlotsDoNotBlockCreatingANewSlotAtTheSameTime() {
+        TimeSlotRepository slotRepository = mock(TimeSlotRepository.class);
+        LaboratoryRepository labRepository = mock(LaboratoryRepository.class);
+        MembershipRepository membershipRepository = mock(MembershipRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        TimeSlotServiceImpl service = new TimeSlotServiceImpl(slotRepository, labRepository,
+                membershipRepository, userRepository, mock(BookingRepository.class), mock(BookingOutboxService.class),
+                mock(SystemConfigService.class), mock(AuditLogService.class), mock(NotificationEmitter.class));
+
+        User manager = mock(User.class);
+        when(manager.getId()).thenReturn(3L);
+        when(manager.hasRole("LAB_MANAGER")).thenReturn(true);
+        Laboratory lab = new Laboratory();
+        lab.setId(5L);
+        lab.setStatus(com.web.labportalbackend.common.enums.LabStatus.AVAILABLE);
+        Instant start = Instant.parse("2026-09-09T07:45:00Z");
+        Instant end = Instant.parse("2026-09-09T08:00:00Z");
+        com.web.labportalbackend.booking.dto.request.CreateTimeSlotRequest request =
+                com.web.labportalbackend.booking.dto.request.CreateTimeSlotRequest.builder()
+                        .labId(5L)
+                        .startTime(start)
+                        .endTime(end)
+                        .capacity(30)
+                        .status(TimeSlotStatus.AVAILABLE)
+                        .build();
+
+        when(userRepository.findByUsername("manager")).thenReturn(Optional.of(manager));
+        when(labRepository.findById(5L)).thenReturn(Optional.of(lab));
+        when(labRepository.findFirstByManagerIdAndDeletedFalse(3L)).thenReturn(Optional.of(lab));
+        when(slotRepository.findOverlappingSlots(eq(5L), eq(start), eq(end), anyList()))
+                .thenReturn(List.of());
+        when(slotRepository.save(any(TimeSlot.class))).thenAnswer(invocation -> {
+            TimeSlot saved = invocation.getArgument(0);
+            saved.setId(12L);
+            return saved;
+        });
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("manager", "n/a", List.of()));
+
+        var result = service.createSlot(request);
+
+        assertEquals(12L, result.getId());
+        verify(slotRepository).findOverlappingSlots(eq(5L), eq(start), eq(end), argThat(statuses ->
+                statuses.contains(TimeSlotStatus.CANCELLED)
+                        && statuses.contains(TimeSlotStatus.CLOSED)
+                        && statuses.contains(TimeSlotStatus.INACTIVE)
+                        && statuses.contains(TimeSlotStatus.ARCHIVED)));
+    }
 }

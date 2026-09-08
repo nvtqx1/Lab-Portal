@@ -15,6 +15,7 @@ interface SlotListProps {
   mode?: 'readonly' | 'student' | 'manager';
   showLabName?: boolean;
   onCancelSlot?: (slotId: number) => void;
+  view?: 'active' | 'history';
 }
 
 function findActiveBookingForSlot(bookings: BookingResponse[], slotId: number) {
@@ -34,10 +35,11 @@ export function SlotList({
   mode = 'readonly',
   showLabName = false,
   onCancelSlot,
+  view = 'active',
 }: SlotListProps) {
   const navigate = useNavigate();
-  const { data: slots = [], isError, isLoading, isFetching, refetch } = useLabSlots(labId);
-  const visibleSlots = slots.filter(isUsableSlot);
+  const { data: slots = [], isError, isLoading, isFetching, refetch } = useLabSlots(labId, view);
+  const visibleSlots = view === 'history' ? slots : slots.filter(isUsableSlot);
   const { data: myBookings = [] } = useMyBookings(mode === 'student');
   const createBooking = useCreateBooking(labId);
   const cancelBooking = useCancelBooking(labId);
@@ -89,7 +91,9 @@ export function SlotList({
   if (!visibleSlots.length) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
-        Hiện chưa có khung giờ sử dụng nào còn hiệu lực.
+        {view === 'history'
+          ? 'Chưa có lịch sử ca sử dụng.'
+          : 'Hiện chưa có khung giờ sử dụng nào còn hiệu lực.'}
       </div>
     );
   }
@@ -101,7 +105,7 @@ export function SlotList({
           Đang cập nhật khung giờ sử dụng...
         </p>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className={mode === 'manager' ? 'grid gap-4 lg:grid-cols-2' : 'grid gap-4 md:grid-cols-2 xl:grid-cols-3'}>
         {visibleSlots.map((slot) => (
           <SlotCard
             key={slot.id}
@@ -114,6 +118,7 @@ export function SlotList({
             onCancelBooking={(booking) => setBookingPendingCancel(booking.id)}
             onViewDetail={(selectedSlot) => navigate(`/app/lab-slots/${selectedSlot.id}`)}
             onCancelSlot={(selectedSlot) => onCancelSlot?.(selectedSlot.id)}
+            historical={view === 'history'}
           />
         ))}
       </div>

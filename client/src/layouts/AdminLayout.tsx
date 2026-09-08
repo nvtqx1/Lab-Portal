@@ -11,16 +11,16 @@ interface NavItem {
 }
 
 const adminNavItems: NavItem[] = [
-  { label: 'Operational Logs', path: '/admin/operational-logs' },
-  { label: 'AI Knowledge', path: '/admin/knowledge' },
-  { label: 'Face Profiles', path: '/admin/face-profile' },
-  { label: 'AI Assistant', path: '/admin/assistant' },
-  { label: 'Notifications', path: '/admin/notifications' },
-  { label: 'Dashboard', path: '/admin/dashboard' },
-  { label: 'Users', path: '/admin/users' },
-  { label: 'Labs', path: '/admin/labs' },
-  { label: 'System Config', path: '/admin/system-config' },
-  { label: 'Audit Logs', path: '/admin/audit-logs' },
+  { label: 'Nhật ký vận hành', path: '/admin/operational-logs' },
+  { label: 'Kho tri thức AI', path: '/admin/knowledge' },
+  { label: 'Hồ sơ khuôn mặt', path: '/admin/face-profile' },
+  { label: 'Trợ lý AI', path: '/admin/assistant' },
+  { label: 'Thông báo', path: '/admin/notifications' },
+  { label: 'Tổng quan', path: '/admin/dashboard' },
+  { label: 'Người dùng', path: '/admin/users' },
+  { label: 'Phòng thí nghiệm', path: '/admin/labs' },
+  { label: 'Cấu hình hệ thống', path: '/admin/system-config' },
+  { label: 'Nhật ký kiểm toán', path: '/admin/audit-logs' },
 ];
 
 export function AdminLayout() {
@@ -58,7 +58,7 @@ export function AdminLayout() {
           <aside className="relative h-full w-72 max-w-[85vw] overflow-y-auto bg-slate-950 px-4 py-5 shadow-xl">
             <div className="mb-5 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-base font-semibold text-white">Admin Portal</p>
+                <p className="truncate text-base font-semibold text-white">Cổng quản trị</p>
                 <p className="mt-1 text-xs font-medium text-slate-400">Quản trị viên</p>
               </div>
               <Button
@@ -90,7 +90,7 @@ export function AdminLayout() {
               </Button>
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase text-slate-400">Quản trị viên</p>
-                <h1 className="truncate text-lg font-semibold text-white sm:text-xl">Admin Portal</h1>
+                <h1 className="truncate text-lg font-semibold text-white sm:text-xl">Cổng quản trị</h1>
               </div>
             </div>
 
@@ -103,7 +103,7 @@ export function AdminLayout() {
                   <span className="block max-w-44 truncate font-medium text-slate-100">
                     {user?.fullName || user?.email || 'Quản trị viên'}
                   </span>
-                  <span className="block text-xs text-slate-400">Admin</span>
+                  <span className="block text-xs text-slate-400">Quản trị viên</span>
                 </span>
               </div>
               <Button className="bg-white text-slate-950 hover:bg-slate-200" onClick={handleLogout} size="sm">
@@ -132,7 +132,7 @@ function SidebarContent({ navItems, compact = false, onNavigate }: SidebarConten
     <>
       {!compact ? (
         <>
-          <div className="px-3 text-lg font-semibold tracking-tight text-white">Admin Portal</div>
+          <div className="px-3 text-lg font-semibold tracking-tight text-white">Cổng quản trị</div>
           <div className="mt-3 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-slate-300">
             Quản trị viên
           </div>

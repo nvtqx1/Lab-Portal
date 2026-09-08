@@ -63,6 +63,27 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     java.util.Optional<Booking> findManagerFaceCheckinBooking(
             @Param("managerId") Long managerId, @Param("bookingId") Long bookingId);
 
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.user u
+            JOIN FETCH b.lab l
+            JOIN FETCH b.timeSlot ts
+            WHERE ts.id = :slotId AND l.manager.id = :managerId
+              AND b.status = com.web.labportalbackend.common.enums.BookingStatus.APPROVED
+              AND b.active = true AND b.deleted = false
+              AND u.active = true AND u.deleted = false
+              AND l.active = true AND l.deleted = false
+              AND ts.active = true AND ts.deleted = false
+              AND b.startTime >= :earliestStart
+              AND b.startTime <= :latestStart
+            ORDER BY b.id ASC
+            """)
+    List<Booking> findManagerFaceCheckinBookingsBySlot(
+            @Param("managerId") Long managerId,
+            @Param("slotId") Long slotId,
+            @Param("earliestStart") Instant earliestStart,
+            @Param("latestStart") Instant latestStart);
+
     List<Booking> findByUserId(Long userId);
 
     List<Booking> findByLabId(Long labId);
